@@ -191,6 +191,31 @@ def render_for_chunk(ct: CleanedTranscript) -> str:
     return "\n\n---\n\n".join(blocks)
 
 
+def render_source_text(ct: CleanedTranscript, start_turn: int, end_turn: int) -> str:
+    """把回合区间 [start_turn, end_turn] 渲染成纯对话 source_text(无回合号脚手架)。
+
+    一文两用,同源逐字一致:① 喂提取 agent(Prompt 2)的 <source_text>;② 落成
+    episode 的 source_text 正本(被 FTS 索引、被 grep/highlights 逐字命中)。
+    回合号脚手架是切块的事(让 agent 输出回合号),提取与正本不需要,故剥除;
+    [我]:/[Claude]: 与 --- 分隔保留,供阅读与发言归属。
+
+    deletions(切块标的可删内容)在本步**不物理删除**:source_text 存逐字全文,
+    保 grep/highlights 逐字保真;去噪交给 S5 审核界面人工做。
+    """
+    blocks: list[str] = []
+    for t in ct.turns:
+        if t.idx < start_turn or t.idx > end_turn:
+            continue
+        parts = []
+        if t.human_text:
+            parts.append(f"[我]: {t.human_text}")
+        if t.assistant_text:
+            parts.append(f"[Claude]: {t.assistant_text}")
+        if parts:
+            blocks.append("\n".join(parts))
+    return "\n\n---\n\n".join(blocks)
+
+
 def render(ct: CleanedTranscript) -> tuple[str, list[dict]]:
     """渲染成 [我]/[Claude] 文本(--- 分隔),返回 (文本, 行号→回合映射)。
 

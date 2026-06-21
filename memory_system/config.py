@@ -114,6 +114,12 @@ class Config:
         return self.staging_dir / "chunks"
 
     @property
+    def staging_episodes_dir(self) -> Path:
+        # S4 提取工作态:每个 session 一个 <session>.json(五件套,未审,非正本)。
+        # 正本是 active 碎片;S5 确认时才写碎片。删了不影响记忆正本。
+        return self.staging_dir / "episodes"
+
+    @property
     def opening_cache_dir(self) -> Path:
         return self.home / "opening_cache"
 
@@ -138,6 +144,7 @@ class Config:
             self.nodes_dir,
             self.staging_dir,
             self.chunks_dir,
+            self.staging_episodes_dir,
             self.opening_cache_dir,
             self.logs_dir,
             self.diagnostics_dir,

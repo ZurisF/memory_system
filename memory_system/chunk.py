@@ -154,6 +154,47 @@ def run_chunk(
     raise ChunkFailed(errors)
 
 
+def _compress_ranges(turns: list[int]) -> list[list[int]]:
+    """把零散回合号压成连续区间 [[a,b],...](已排序输入)。"""
+    out: list[list[int]] = []
+    for n in turns:
+        if out and n == out[-1][1] + 1:
+            out[-1][1] = n
+        else:
+            out.append([n, n])
+    return out
+
+
+def validate_segments(segments: list[dict], turn_idxs: set[int]) -> dict:
+    """段间关系校验(P1-B):**禁重叠**(硬错),**允许空洞**(警告)。
+
+    选段本是挑值得记的,不强制首尾全覆盖;但两段回合区间相交会让同一回合重复入库,
+    必须拒。越界(回合不在真实集合内)由调用方先挡,这里只管段与段之间。
+
+    返回 {"ok": 无重叠, "overlaps": [(seg_a, seg_b, [起,止]),...], "gaps": [[起,止],...]}。
+    gaps 仅作提示(哪些回合没被任何段覆盖),不影响 ok。
+    """
+    ordered = sorted(segments, key=lambda s: (s["start_turn"], s["end_turn"]))
+    overlaps: list[dict] = []
+    for i in range(len(ordered)):
+        a = ordered[i]
+        for b in ordered[i + 1 :]:
+            if b["start_turn"] > a["end_turn"]:
+                break  # 已排序,后续段更靠后,不会再与 a 相交
+            lo = max(a["start_turn"], b["start_turn"])
+            hi = min(a["end_turn"], b["end_turn"])
+            overlaps.append({
+                "a": a.get("seg_id") or f"{a['start_turn']}-{a['end_turn']}",
+                "b": b.get("seg_id") or f"{b['start_turn']}-{b['end_turn']}",
+                "range": [lo, hi],
+            })
+    covered: set[int] = set()
+    for s in segments:
+        covered.update(range(s["start_turn"], s["end_turn"] + 1))
+    gaps = _compress_ranges(sorted(turn_idxs - covered))
+    return {"ok": not overlaps, "overlaps": overlaps, "gaps": gaps}
+
+
 def manual_segments(
     ct: CleanedTranscript, boundaries: list[tuple[int, int]]
 ) -> list[dict]:

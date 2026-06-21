@@ -114,7 +114,7 @@ def _insert_nodes(
     return label_to_id
 
 
-def _ensure_node(
+def ensure_node(
     con: sqlite3.Connection, label: str, label_to_id: dict[str, int], report: RebuildReport
 ) -> int:
     """膜引用了一个没有 node 碎片的 label → 建桩 node,保证膜不悬空。"""
@@ -162,10 +162,10 @@ def _insert_episodes(
 ) -> None:
     """灌已 parse 的 episode 列表 + 膜 + 已算好的向量(纯 DB 写,不再失败)。"""
     for (path, ep), vec in zip(eps, vectors):
-        eid = _insert_episode(con, ep, path, model, dim)
+        eid = insert_episode(con, ep, path, model, dim)
         report.episodes += 1
         for label in ep.nodes:
-            nid = _ensure_node(con, label, label_to_id, report)
+            nid = ensure_node(con, label, label_to_id, report)
             con.execute(
                 "INSERT OR IGNORE INTO episode_nodes(episode_id, node_id) VALUES (?,?)",
                 (eid, nid),
@@ -178,7 +178,7 @@ def _insert_episodes(
         report.vectors += 1
 
 
-def _insert_episode(
+def insert_episode(
     con: sqlite3.Connection, ep: Episode, path: Path, model: str, dim: int
 ) -> int:
     import json

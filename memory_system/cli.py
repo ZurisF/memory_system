@@ -197,7 +197,20 @@ def cmd_chunk(cfg: Config, args: argparse.Namespace) -> int:
         OversizedError,
         manual_segments,
         run_chunk,
+        validate_segments,
     )
+
+    def _check_segments(segs: list[dict]) -> bool:
+        """P1-B:重叠报错(返回 False),空洞打印警告。"""
+        vr = validate_segments(segs, {t.idx for t in ct.turns})
+        for g in vr["gaps"]:
+            print(f"  ⚠ 空洞:回合 {g[0]}-{g[1]} 未被任何段覆盖(不入库)")
+        if not vr["ok"]:
+            for o in vr["overlaps"]:
+                print(f"  ✗ 重叠:段 {o['a']} 与 {o['b']} 在回合 {o['range'][0]}-{o['range'][1]}")
+            print("段重叠会重复入库,已拒绝保存;请先消除重叠")
+            return False
+        return True
 
     log = setup_logging(cfg.logs_dir)
     path = Path(args.path).expanduser()
@@ -220,6 +233,8 @@ def cmd_chunk(cfg: Config, args: argparse.Namespace) -> int:
             print("--manual 形如 1-8,9-20(回合号)")
             return 1
         segs = manual_segments(ct, bounds)
+        if not _check_segments(segs):
+            return 1
         doc = segments_store.save_full(cfg.chunks_dir, ct.session_id, str(path), mtime, segs)
         print(f"手动切块 {len(segs)} 段,落: {segments_store.path_for(cfg.chunks_dir, ct.session_id)}")
         _print_segments(doc["segments"])
@@ -244,6 +259,8 @@ def cmd_chunk(cfg: Config, args: argparse.Namespace) -> int:
         log.error("切块失败: %s", e)
         print(f"切块失败(已记入 retry 列表): {e}")
         return 1
+    if not _check_segments(res.segments):
+        return 1
     doc = segments_store.record_agent_run(cfg.chunks_dir, ct.session_id, str(path), mtime, res)
     print(f"切块完成: {len(res.segments)} 段  provider={res.provider} model={res.model} "
           f"尝试={res.attempts} cost={res.cost_usd}")
@@ -259,6 +276,151 @@ def _print_segments(segments: list[dict]) -> None:
               f"[{s.get('origin')}] {s.get('tag') or '(无 tag)'}{dels}")
         if s.get("cut_reason"):
             print(f"       ↳ {s['cut_reason']}")
+
+
+def cmd_extract(cfg: Config, args: argparse.Namespace) -> int:
+    from dataclasses import replace
+    from pathlib import Path
+
+    from memory_system import preview_cache, segments_store, staging_store
+    from memory_system.agent import get_chat_provider
+    from memory_system.extract import existing_nodes, extract_segments
+
+    log = setup_logging(cfg.logs_dir)
+    path = Path(args.path).expanduser()
+    if not path.exists():
+        print(f"文件不存在: {path}")
+        return 1
+    ct = preview_cache.get(cfg.preview_cache_dir, path)
+    if not ct.turns:
+        print("清洗后 0 回合(空壳),无可提取内容")
+        return 1
+
+    doc = segments_store.load(cfg.chunks_dir, ct.session_id)
+    if not doc or not doc.get("segments"):
+        print("无切块段;请先 `memory-system chunk` 切块并确认分段再提取")
+        return 1
+    segments = doc["segments"]
+    if args.seg:
+        want = {s.strip() for s in args.seg.split(",") if s.strip()}
+        segments = [s for s in segments if s.get("seg_id") in want]
+        if not segments:
+            print(f"无匹配 seg_id: {sorted(want)}")
+            return 1
+
+    agent_cfg = cfg.agent if not args.provider else replace(cfg.agent, provider=args.provider)
+    model = args.model or agent_cfg.extract_model
+    provider = get_chat_provider(agent_cfg)
+    ok, why = provider.available()
+    if not ok:
+        print(f"provider {agent_cfg.provider} 不可用: {why}")
+        return 1
+
+    nodes = existing_nodes(cfg.nodes_dir)
+    batch = extract_segments(ct, segments, provider, nodes, model=model,
+                             timeout=agent_cfg.timeout_s, max_retries=agent_cfg.max_retries)
+    sdir = cfg.staging_episodes_dir
+    ts_by_turn = {t.idx: t.timestamp for t in ct.turns}
+    for seg, res, src in batch.staged:
+        staging_store.upsert_episode(sdir, ct.session_id, str(path), seg, res, src,
+                                     created_at=ts_by_turn.get(seg["start_turn"]))
+    for seg, errors in batch.failed:
+        staging_store.append_retry(sdir, ct.session_id, str(path), seg,
+                                   provider=agent_cfg.provider, model=model, errors=errors)
+        log.error("提取失败 seg=%s: %s", seg.get("seg_id"), errors)
+
+    print(f"提取完成: {len(batch.staged)} 段进 staging,{len(batch.failed)} 段进 retry  "
+          f"provider={provider.id} model={model}")
+    sdoc = staging_store.load(sdir, ct.session_id)
+    if sdoc:
+        _print_staging(sdoc)
+    return 0 if not batch.failed else 2
+
+
+def _print_staging(doc: dict) -> None:
+    for e in doc.get("episodes", []):
+        nodes = e.get("nodes") or []
+        hl = e.get("highlights") or []
+        print(f"  {e.get('stage_id')}({e.get('seg_id')}): 回合 {e.get('start_turn')}-"
+              f"{e.get('end_turn')}  tier={e.get('salience_tier')}  "
+              f"node{len(nodes)} highlight{len(hl)}")
+        ov = (e.get("overview") or "").replace("\n", " ")
+        print(f"       ↳ {ov[:70]}")
+    for r in doc.get("retry", []):
+        print(f"  [retry] {r.get('seg_id')}: 回合 {r.get('start_turn')}-{r.get('end_turn')}  "
+              f"{'; '.join(r.get('errors') or [])[:80]}")
+
+
+def cmd_confirm(cfg: Config, args: argparse.Namespace) -> int:
+    from dataclasses import replace
+    from pathlib import Path
+
+    from memory_system import archive, preview_cache, staging_store
+    from memory_system.embedding import get_provider
+
+    log = setup_logging(cfg.logs_dir)
+    path = Path(args.path).expanduser()
+    if not path.exists():
+        print(f"文件不存在: {path}")
+        return 1
+    ct = preview_cache.get(cfg.preview_cache_dir, path)
+    doc = staging_store.load(cfg.staging_episodes_dir, ct.session_id)
+    if not doc or not doc.get("episodes"):
+        print("无 staging episode 可确认;请先 extract")
+        return 1
+    emb_cfg = cfg.embedding if not args.provider else replace(cfg.embedding, provider=args.provider)
+    provider = get_provider(emb_cfg)
+
+    if args.all:
+        stage_ids = [e["stage_id"] for e in doc["episodes"]]
+    elif args.stage:
+        stage_ids = [args.stage]
+    else:
+        print("指定 --stage e1 或 --all")
+        return 1
+    ok_n = 0
+    for sid in stage_ids:
+        try:
+            pid = archive.confirm_episode(cfg, ct.session_id, sid, provider)
+        except archive.ArchiveError as e:
+            log.error("确认 %s 失败: %s", sid, e)
+            print(f"  ✗ {sid}: {e}")
+            return 2
+        print(f"  ✓ {sid} → active  {pid}")
+        ok_n += 1
+    print(f"确认 {ok_n} 条成 active 碎片(已增量入库)")
+    return 0
+
+
+def cmd_reject(cfg: Config, args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from memory_system import archive, preview_cache
+
+    path = Path(args.path).expanduser()
+    if not path.exists():
+        print(f"文件不存在: {path}")
+        return 1
+    ct = preview_cache.get(cfg.preview_cache_dir, path)
+    try:
+        archive.reject_episode(cfg, ct.session_id, args.stage, args.reason)
+    except archive.ArchiveError as e:
+        print(f"拒绝失败: {e}")
+        return 1
+    print(f"已拒 {args.stage}(留痕 rejected,未入库)")
+    return 0
+
+
+def cmd_archive(cfg: Config, args: argparse.Namespace) -> int:
+    from memory_system import archive
+
+    try:
+        archive.archive_episode(cfg, args.public_id)
+    except archive.ArchiveError as e:
+        print(f"归档失败: {e}")
+        return 1
+    print(f"已归档 {args.public_id}(active → archived,不再被检索注入)")
+    return 0
 
 
 def cmd_index(cfg: Config, args: argparse.Namespace) -> int:
@@ -343,6 +505,30 @@ def build_parser() -> argparse.ArgumentParser:
     ck.add_argument("--model", default=None, help="覆盖切块模型(默认 sonnet)")
     ck.add_argument("--manual", default=None, help="手动切块,形如 1-8,9-20(回合号),不走 agent")
     ck.set_defaults(func=cmd_chunk)
+
+    xp = sub.add_parser("extract", help="提取(Prompt 2):对确认的段逐段提取五件套,落 staging")
+    xp.add_argument("path", help="jsonl 路径(段取自该 session 的切块工作文件)")
+    xp.add_argument("--provider", default=None, help="覆盖 agent provider(claude_cli/deepseek/fake)")
+    xp.add_argument("--model", default=None, help="覆盖提取模型(默认 opus)")
+    xp.add_argument("--seg", default=None, help="只提取指定段,形如 s1,s3(默认全部段)")
+    xp.set_defaults(func=cmd_extract)
+
+    cf = sub.add_parser("confirm", help="审核(S5):确认 staging episode 成 active 碎片 + 增量入库")
+    cf.add_argument("path", help="jsonl 路径(staging 取自该 session)")
+    cf.add_argument("--stage", default=None, help="确认指定 stage_id,如 e1")
+    cf.add_argument("--all", action="store_true", help="确认该 session 全部 staging episode")
+    cf.add_argument("--provider", default=None, help="覆盖 embedding provider(测试可 fake)")
+    cf.set_defaults(func=cmd_confirm)
+
+    rj = sub.add_parser("reject", help="审核(S5):拒一条 staging episode(留痕,不入库)")
+    rj.add_argument("path", help="jsonl 路径")
+    rj.add_argument("--stage", required=True, help="要拒的 stage_id,如 e1")
+    rj.add_argument("--reason", default=None, help="拒绝原因(可选)")
+    rj.set_defaults(func=cmd_reject)
+
+    av = sub.add_parser("archive", help="审核(S5):把 active 碎片降级为 archived")
+    av.add_argument("public_id", help="要归档的 episode public_id,如 ep_a1b2c3d4")
+    av.set_defaults(func=cmd_archive)
 
     ixp = sub.add_parser("index", help="索引重建")
     ixsub = ixp.add_subparsers(dest="action", required=True)

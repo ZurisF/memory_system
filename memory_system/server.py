@@ -6,9 +6,11 @@ API:
   GET  /api/transcript?path=...    取清洗回合 + 每回合已处理标记
   GET  /api/agent/providers        列可用 agent 后端(claude_cli/deepseek/fake)
   GET  /api/segments?path=...      取该 transcript 的切块工作态(段/agent/retry)
+  GET  /api/staging?path=...       取该 transcript 的提取工作态(staging 五件套/retry)
   POST /api/select   {path, session_id, turn_idxs}  登记选段为已处理
   POST /api/chunk    {path, provider?, model?}      调切块 agent,落工作文件
   POST /api/segments {path, segments}               存人工编辑后的段(uuid 服务端重算)
+  POST /api/extract  {path, seg_ids?, provider?, model?}  逐段提取五件套,落 staging(按块回滚)
 """
 
 from __future__ import annotations
@@ -49,6 +51,21 @@ def _providers_info(cfg: Config) -> list[dict]:
 def _ui_segment(s: dict) -> dict:
     """送前端的段:剥掉 covered_uuids(uuid 不上台面)。"""
     return {k: v for k, v in s.items() if k != "covered_uuids"}
+
+
+def _ui_episode(e: dict) -> dict:
+    """送前端的 staging episode:剥掉 covered_uuids(uuid 不上台面)。source_text 保留(S5 审核要看)。"""
+    return {k: v for k, v in e.items() if k != "covered_uuids"}
+
+
+def _ui_staging(doc: dict | None) -> dict:
+    if not doc:
+        return {"episodes": [], "retry": [], "updated_at": None}
+    return {
+        "episodes": [_ui_episode(e) for e in doc.get("episodes", [])],
+        "retry": doc.get("retry", []),
+        "updated_at": doc.get("updated_at"),
+    }
 
 
 def _ui_doc(doc: dict | None) -> dict:
@@ -112,10 +129,23 @@ def make_handler(cfg: Config):
                 return self._api_transcript(parse_qs(u.query))
             if u.path == "/api/agent/providers":
                 return self._json({"providers": _providers_info(cfg),
-                                   "chunk_model": cfg.agent.chunk_model})
+                                   "chunk_model": cfg.agent.chunk_model,
+                                   "extract_model": cfg.agent.extract_model})
             if u.path == "/api/segments":
                 return self._api_get_segments(parse_qs(u.query))
+            if u.path == "/api/staging":
+                return self._api_get_staging(parse_qs(u.query))
             self._send(404, b"not found", "text/plain")
+
+        def _api_get_staging(self, q) -> None:
+            from memory_system import staging_store
+
+            path = _confine((q.get("path") or [""])[0])
+            if path is None or not path.exists():
+                return self._json({"error": "路径越界或文件不存在"}, 404)
+            ct = preview_cache.get(cfg.preview_cache_dir, path)
+            doc = staging_store.load(cfg.staging_episodes_dir, ct.session_id)
+            self._json(_ui_staging(doc))
 
         def _api_get_segments(self, q) -> None:
             path = _confine((q.get("path") or [""])[0])
@@ -169,18 +199,97 @@ def make_handler(cfg: Config):
         # ---- POST ----
         def do_POST(self) -> None:
             u = urlparse(self.path)
-            if u.path not in ("/api/select", "/api/chunk", "/api/segments"):
+            routes = {
+                "/api/select": self._api_select,
+                "/api/chunk": self._api_chunk,
+                "/api/segments": self._api_save_segments,
+                "/api/extract": self._api_extract,
+                "/api/confirm": self._api_confirm,
+                "/api/reject": self._api_reject,
+                "/api/archive": self._api_archive,
+                "/api/staging/edit": self._api_staging_edit,
+            }
+            handler = routes.get(u.path)
+            if handler is None:
                 return self._send(404, b"not found", "text/plain")
             n = int(self.headers.get("Content-Length", 0))
             try:
                 body = json.loads(self.rfile.read(n) or b"{}")
             except json.JSONDecodeError:
                 return self._json({"error": "请求体非 JSON"}, 400)
-            if u.path == "/api/select":
-                return self._api_select(body)
-            if u.path == "/api/chunk":
-                return self._api_chunk(body)
-            return self._api_save_segments(body)
+            return handler(body)
+
+        # ---- S5 审核/归档 ----
+        def _staging_for(self, body):
+            """取 (ct, staging doc 重载函数);path 越界返回 (None, error 响应已发)。"""
+            path = _confine(body.get("path", ""))
+            if path is None or not path.exists():
+                self._json({"error": "路径越界或文件不存在"}, 404)
+                return None
+            return preview_cache.get(cfg.preview_cache_dir, path)
+
+        def _api_confirm(self, body) -> None:
+            from memory_system import archive, staging_store
+            from memory_system.embedding import get_provider
+
+            ct = self._staging_for(body)
+            if ct is None:
+                return
+            stage_id = body.get("stage_id")
+            if not stage_id:
+                return self._json({"error": "缺 stage_id"}, 400)
+            try:
+                provider = get_provider(cfg.embedding)
+                pid = archive.confirm_episode(cfg, ct.session_id, stage_id, provider)
+            except archive.ArchiveError as e:
+                return self._json({"error": str(e)}, 400)
+            doc = staging_store.load(cfg.staging_episodes_dir, ct.session_id)
+            self._json({"ok": True, "public_id": pid, **_ui_staging(doc)})
+
+        def _api_reject(self, body) -> None:
+            from memory_system import archive, staging_store
+
+            ct = self._staging_for(body)
+            if ct is None:
+                return
+            stage_id = body.get("stage_id")
+            if not stage_id:
+                return self._json({"error": "缺 stage_id"}, 400)
+            try:
+                archive.reject_episode(cfg, ct.session_id, stage_id, body.get("reason"))
+            except archive.ArchiveError as e:
+                return self._json({"error": str(e)}, 400)
+            doc = staging_store.load(cfg.staging_episodes_dir, ct.session_id)
+            self._json({"ok": True, **_ui_staging(doc)})
+
+        def _api_staging_edit(self, body) -> None:
+            from memory_system import staging_store
+
+            ct = self._staging_for(body)
+            if ct is None:
+                return
+            stage_id = body.get("stage_id")
+            fields = body.get("fields")
+            if not stage_id or not isinstance(fields, dict):
+                return self._json({"error": "缺 stage_id 或 fields"}, 400)
+            try:
+                staging_store.edit_episode(cfg.staging_episodes_dir, ct.session_id, stage_id, fields)
+            except KeyError as e:
+                return self._json({"error": str(e)}, 404)
+            doc = staging_store.load(cfg.staging_episodes_dir, ct.session_id)
+            self._json({"ok": True, **_ui_staging(doc)})
+
+        def _api_archive(self, body) -> None:
+            from memory_system import archive
+
+            public_id = body.get("public_id")
+            if not public_id:
+                return self._json({"error": "缺 public_id"}, 400)
+            try:
+                archive.archive_episode(cfg, public_id)
+            except archive.ArchiveError as e:
+                return self._json({"error": str(e)}, 400)
+            self._json({"ok": True, "public_id": public_id})
 
         def _api_chunk(self, body) -> None:
             from dataclasses import replace as _replace
@@ -224,6 +333,58 @@ def make_handler(cfg: Config):
                                                   str(path), mtime, res)
             self._json({"ok": True, **_ui_doc(doc)})
 
+        def _api_extract(self, body) -> None:
+            from dataclasses import replace as _replace
+
+            from memory_system import staging_store
+            from memory_system.agent import get_chat_provider
+            from memory_system.extract import existing_nodes, extract_segments
+
+            path = _confine(body.get("path", ""))
+            if path is None or not path.exists():
+                return self._json({"error": "路径越界或文件不存在"}, 404)
+            ct = preview_cache.get(cfg.preview_cache_dir, path)
+            if not ct.turns:
+                return self._json({"error": "清洗后 0 回合,无可提取内容"}, 400)
+
+            seg_doc = segments_store.load(cfg.chunks_dir, ct.session_id)
+            if not seg_doc or not seg_doc.get("segments"):
+                return self._json({"error": "无切块段;请先切块并确认分段"}, 400)
+            segments = seg_doc["segments"]
+            want = body.get("seg_ids")
+            if want:
+                want = set(want)
+                segments = [s for s in segments if s.get("seg_id") in want]
+                if not segments:
+                    return self._json({"error": f"无匹配 seg_id: {sorted(want)}"}, 400)
+
+            agent_cfg = cfg.agent
+            if body.get("provider"):
+                agent_cfg = _replace(agent_cfg, provider=body["provider"])
+            model = body.get("model") or agent_cfg.extract_model
+            try:
+                provider = get_chat_provider(agent_cfg)
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+            ok, why = provider.available()
+            if not ok:
+                return self._json({"kind": "unavailable", "error": f"provider 不可用: {why}"}, 400)
+
+            nodes = existing_nodes(cfg.nodes_dir)
+            batch = extract_segments(ct, segments, provider, nodes, model=model,
+                                     timeout=agent_cfg.timeout_s, max_retries=agent_cfg.max_retries)
+            sdir = cfg.staging_episodes_dir
+            ts_by_turn = {t.idx: t.timestamp for t in ct.turns}
+            for seg, res, src in batch.staged:
+                staging_store.upsert_episode(sdir, ct.session_id, str(path), seg, res, src,
+                                             created_at=ts_by_turn.get(seg["start_turn"]))
+            for seg, errors in batch.failed:
+                staging_store.append_retry(sdir, ct.session_id, str(path), seg,
+                                           provider=agent_cfg.provider, model=model, errors=errors)
+            doc = staging_store.load(sdir, ct.session_id)
+            self._json({"ok": True, "staged": len(batch.staged), "failed": len(batch.failed),
+                        **_ui_staging(doc)})
+
         def _api_save_segments(self, body) -> None:
             path = _confine(body.get("path", ""))
             if path is None or not path.exists():
@@ -232,7 +393,7 @@ def make_handler(cfg: Config):
             if not isinstance(incoming, list):
                 return self._json({"error": "缺 segments 列表"}, 400)
             ct = preview_cache.get(cfg.preview_cache_dir, path)
-            from memory_system.chunk import uuids_by_turn
+            from memory_system.chunk import uuids_by_turn, validate_segments
 
             umap = uuids_by_turn(ct)
             valid_idx = set(umap)
@@ -256,8 +417,12 @@ def make_handler(cfg: Config):
                     "origin": s.get("origin") or "edited",
                     "covered_uuids": segments_store.recompute_uuids(start, end, umap),
                 })
+            # P1-B:段间关系校验。重叠拒存(会重复入库);空洞放行,gaps 回前端提示。
+            vr = validate_segments(norm, valid_idx)
+            if not vr["ok"]:
+                return self._json({"error": "段重叠,会重复入库", "overlaps": vr["overlaps"]}, 400)
             doc = segments_store.save_full(cfg.chunks_dir, ct.session_id, str(path), mtime, norm)
-            self._json({"ok": True, **_ui_doc(doc)})
+            self._json({"ok": True, "gaps": vr["gaps"], **_ui_doc(doc)})
 
         def _api_select(self, body) -> None:
             path = _confine(body.get("path", ""))

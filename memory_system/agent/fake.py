@@ -39,6 +39,37 @@ def auto_segment(user: str) -> str:
     return make_segments(segs)
 
 
+def make_extraction(
+    overview: str,
+    summary: str,
+    highlights: list[dict] | None = None,
+    nodes: list[dict] | None = None,
+    salience_tier: int = 1,
+    salience_reason: str = "",
+) -> str:
+    """把五件套序列化成提取 agent(Prompt 2)约定的 JSON 文本。"""
+    return json.dumps({
+        "overview": overview,
+        "summary": summary,
+        "highlights": highlights or [],
+        "nodes": nodes or [],
+        "salience_tier": salience_tier,
+        "salience_reason": salience_reason,
+    }, ensure_ascii=False)
+
+
+def auto_extract(user: str) -> str:
+    """默认确定性提取:产出形态合法的五件套(供 verify 走通成功路径)。"""
+    return make_extraction(
+        overview="zuris Claude 测试段 overview 关键词平铺。",
+        summary="zuris 与 Claude 的一段测试对话,起承转合俱全,无虚构。",
+        highlights=[],
+        nodes=[],
+        salience_tier=1,
+        salience_reason="测试段:常规技术讨论。",
+    )
+
+
 class FakeChatProvider(ChatProvider):
     id = "fake"
 
