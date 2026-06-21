@@ -32,12 +32,25 @@ memory-system migrate status       # schema 版本
 memory-system migrate up           # 应用迁移
 memory-system migrate down         # 回滚一步
 memory-system doctor               # 健康检查
-memory-system diagnose claude-code # 实测平台 transcript / resume 信号,落报告
+memory-system diagnose claude-code # 实测平台 transcript 形态,落报告
 memory-system embed "一段文本"     # 实测 embedding(--provider fake|dashscope)
+memory-system index rebuild        # 从碎片全量重建 DB+向量+FTS(--provider fake 免联网)
+memory-system scan                 # 列出 transcript(CLI 视角)
+memory-system serve                # 启本地选段前端 → http://127.0.0.1:8765
 ```
 
 数据主目录默认 `~/.memory_system`,可用环境变量 `MEMORY_SYSTEM_HOME` 改。
 
+> `index rebuild` 用真 provider(dashscope)会对所有 episode overview 联网重嵌、耗额度;
+> 测试用 `--provider fake`。
+
+## 前端(当前为 S2 选段工具)
+
+`memory-system serve` 起的是**零依赖**本地前端(标准库 http.server + 原生 HTML/JS),
+当前只做到 **S2**:列 transcript(已自动隐藏 `/clear` 空壳等空会话)、清洗预览、
+选回合、标记「已处理」。切块/提取/审核/归档(S3–S5)尚未接入。
+
 ## 阶段
 
-当前:**Phase 1 / S0 地基 + 平台实测**。逐步通过门见 `phase1_build.md`。
+当前:**Phase 1 / S0+S1+S2 完工**(引擎层全绿,GUI 至 S2 选段)。下一步 S3 切块 agent。
+逐步通过门见 `phase1_build.md`。

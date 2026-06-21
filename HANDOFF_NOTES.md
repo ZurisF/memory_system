@@ -1,7 +1,24 @@
 # memory_system 交接隐患笔记
 
 > 目的:给后续接手实例快速看懂当前项目真实状态、已知隐患。
-> 日期:2026-06-20。本文只记录只读检查结论,未代表已修复。
+> 日期:2026-06-20。
+
+## 已修复(2026-06-20 续场)
+
+- **#1 README 补 serve**:已加 `serve`/`index rebuild`/`scan` + S2 前端范围说明。
+- **#3 m003 covered_uuids 冲突注释**:已改。结论锁定:uuid 绝不进碎片;processed 表纯
+  操作态书签,**不参与碎片重建**,删库后为空、已处理标记不恢复(可接受代价)。
+- **#8 resume 检测**:**整个 `resume.py` 已删**。原实现建立在「resume 复刻进新 jsonl、
+  跨文件 uuid 重叠」的**错误前提**上;实测(见 `../project/session-jsonl-lifecycle.md`)
+  证明 **resume 永远在原文件追加,uuid 永不跨文件**。`/api/transcript` 的 resume 字段、
+  前端断点展示、`verify_s2` 的 resume 测试一并移除。「哪些回合没处理过」由已处理标记覆盖,
+  不需要 resume 检测。
+- **新增**:transcript 列表自动剔除清洗后 0 回合的空壳(`/clear` stub 等),返回
+  `hidden_empty` 计数。
+
+## 待办(尚未处理)
+
+下面 #2 #4 #5 #6 #7 仍在;#1 #3 #8 见上「已修复」。
 
 ## 当前实际状态
 

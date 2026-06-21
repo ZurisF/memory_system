@@ -2,8 +2,8 @@
 
 只绑 127.0.0.1。静态文件(index.html/app.js)在 web/ 下。
 API:
-  GET  /api/transcripts            列 transcript
-  GET  /api/transcript?path=...    取清洗回合 + resume 断点 + 每回合已处理标记
+  GET  /api/transcripts            列 transcript(清洗后 0 回合的空壳已剔除)
+  GET  /api/transcript?path=...    取清洗回合 + 每回合已处理标记
   POST /api/select  {path, session_id, turn_idxs}   登记选段为已处理
 """
 
@@ -18,35 +18,9 @@ from memory_system import preview_cache, processed
 from memory_system.config import Config
 from memory_system.db import migrate
 from memory_system.db.connection import connect
-from memory_system.preprocess import render
-from memory_system.resume import collect_message_uuids, detect_resume
 from memory_system.transcript import describe, discover
 
 _WEB = Path(__file__).parent / "web"
-
-# 进程内缓存:path → (mtime, uuids),避免重复读旧 transcript 算 resume 前缀
-_UUID_CACHE: dict[str, tuple[float, set[str]]] = {}
-
-
-def _uuids_cached(path: Path) -> set[str]:
-    mt = path.stat().st_mtime
-    hit = _UUID_CACHE.get(str(path))
-    if hit and hit[0] == mt:
-        return hit[1]
-    ids = collect_message_uuids(path)
-    _UUID_CACHE[str(path)] = (mt, ids)
-    return ids
-
-
-def _prior_uuids(target: Path, infos) -> set[str]:
-    """比 target 更早(mtime 更小)的 transcript 的 uuid 并集,供 resume 断点判断。"""
-    tmt = target.stat().st_mtime
-    acc: set[str] = set()
-    for i in infos:
-        if i.path == target or i.mtime >= tmt:
-            continue
-        acc |= _uuids_cached(i.path)
-    return acc
 
 
 def make_handler(cfg: Config):
@@ -87,12 +61,20 @@ def make_handler(cfg: Config):
 
         def _api_transcripts(self) -> None:
             infos = discover(cfg.transcripts_root)
-            self._json({"root": str(cfg.transcripts_root), "transcripts": [
-                {"session_id": i.session_id, "path": str(i.path), "cwd": i.cwd,
-                 "mtime": i.mtime, "size": i.size, "line_count": i.line_count,
-                 "maybe_writing": i.maybe_writing}
-                for i in infos
-            ]})
+            items = []
+            hidden_empty = 0
+            for i in infos:
+                # 清洗后 0 回合 = /clear 空壳等垃圾文件,剔除(人工审核前先去噪)。
+                ct = preview_cache.get(cfg.preview_cache_dir, i.path, mtime=i.mtime)
+                if not ct.turns:
+                    hidden_empty += 1
+                    continue
+                items.append(
+                    {"session_id": i.session_id, "path": str(i.path), "cwd": i.cwd,
+                     "mtime": i.mtime, "size": i.size, "line_count": i.line_count,
+                     "turn_count": len(ct.turns), "maybe_writing": i.maybe_writing})
+            self._json({"root": str(cfg.transcripts_root),
+                        "hidden_empty": hidden_empty, "transcripts": items})
 
         def _api_transcript(self, q) -> None:
             path = Path((q.get("path") or [""])[0]).expanduser()
@@ -100,8 +82,6 @@ def make_handler(cfg: Config):
                 return self._json({"error": "文件不存在"}, 404)
             info = describe(path)
             ct = preview_cache.get(cfg.preview_cache_dir, path, mtime=info.mtime)
-            infos = discover(cfg.transcripts_root)
-            resume = detect_resume(ct, _prior_uuids(path, infos))
             con = connect(cfg.db_path)
             try:
                 pset = processed.processed_uuids(con, ct.session_id)
@@ -117,9 +97,6 @@ def make_handler(cfg: Config):
             self._json({
                 "session_id": ct.session_id, "path": str(path),
                 "maybe_writing": info.maybe_writing, "cwd": info.cwd,
-                "resume": {"is_resume": resume.is_resume,
-                           "breakpoint_idx": resume.breakpoint_idx,
-                           "copied_turns": resume.copied_turns},
                 "turns": turns,
             })
 

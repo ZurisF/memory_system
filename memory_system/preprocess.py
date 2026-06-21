@@ -164,7 +164,7 @@ def clean(path: Path) -> CleanedTranscript:
         elif t == "assistant":
             text = _assistant_text(content)
             if cur is None:
-                # 开头就有 assistant(如 resume 注入):起一个无人类发言的回合
+                # 文件开头就是 assistant(无前置真人发言):起一个无人类发言的回合兜底
                 cur = Turn(idx=len(ct.turns) + 1, human_text="", assistant_text="")
             if text:
                 cur.assistant_text += ("\n" if cur.assistant_text else "") + text

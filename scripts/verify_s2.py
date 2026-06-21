@@ -1,7 +1,7 @@
 """S2 引擎层 headless 验收(不含 GUI)。
 
 覆盖通过门:真 transcript 列出、预览正确无噪声、mtime 变缓存失效、正在写入警示、
-resume 断点识别、段级 flag 幂等(含 resume 复刻同段同哈希)。
+段级 flag 幂等(选中回合集顺序无关的稳定身份)。
 跑法:python scripts/verify_s2.py
 """
 
@@ -22,8 +22,7 @@ from memory_system import preview_cache, processed  # noqa: E402
 from memory_system.config import load_config  # noqa: E402
 from memory_system.db import migrate  # noqa: E402
 from memory_system.db.connection import connect  # noqa: E402
-from memory_system.preprocess import CleanedTranscript, Turn, clean, render  # noqa: E402
-from memory_system.resume import detect_resume  # noqa: E402
+from memory_system.preprocess import clean, render  # noqa: E402
 from memory_system.transcript import describe, discover  # noqa: E402
 
 CFG = load_config()
@@ -101,27 +100,6 @@ def gate_writing_warning() -> None:
     print("  [ok] 正在写入(mtime≈now)给出警示;陈旧文件不误报")
 
 
-def gate_resume_detect() -> None:
-    # 原会话:回合 a,b,c
-    base = CleanedTranscript(session_id="orig", path="orig")
-    base.turns = [
-        Turn(idx=1, human_text="第一段问题", assistant_text="第一段回答", uuids=["x1", "x2"]),
-        Turn(idx=2, human_text="第二段问题", assistant_text="第二段回答", uuids=["x3", "x4"]),
-    ]
-    prior = {"x1", "x2", "x3", "x4"}
-    # resume 复刻:前两回合 uuid 照旧,第三回合是新生的
-    resumed = CleanedTranscript(session_id="resume", path="resume")
-    resumed.turns = base.turns + [
-        Turn(idx=3, human_text="续写新问题", assistant_text="续写新回答", uuids=["y1", "y2"]),
-    ]
-    info = detect_resume(resumed, prior)
-    assert info.is_resume and info.copied_turns == 2 and info.breakpoint_idx == 3, info
-    # 全新会话:无重叠 → 非 resume
-    fresh = detect_resume(base, set())
-    assert not fresh.is_resume
-    print("  [ok] resume 断点:复刻前缀 2 回合、断点=回合3;全新会话不误判")
-
-
 def gate_segment_flag() -> None:
     con = connect(CFG.db_path)
     migrate.up(con)
@@ -134,13 +112,13 @@ def gate_segment_flag() -> None:
     assert h1 == h2
     (n,) = con.execute("SELECT COUNT(*) FROM processed_segments").fetchone()
     assert n == 1, f"同段重复登记应幂等,实得 {n} 行"
-    # resume 复刻:uuid 集相同(即便来自另一会话文件)→ 同哈希 → 判已处理
+    # 同一回合集、不同选择顺序 → 同哈希 → 判已处理
     assert processed.is_processed(con, ["x3", "x1", "x2"])
     # 覆盖并集 + 水位
     assert processed.processed_uuids(con, "sess-A") == set(seg)
     assert processed.get_watermark(con, "sess-A") == "x3"
     con.close()
-    print("  [ok] 段级 flag:顺序无关哈希、幂等、resume 复刻同段判重、水位推进")
+    print("  [ok] 段级 flag:顺序无关哈希、幂等、同回合集判重、水位推进")
 
 
 def main() -> None:
@@ -149,7 +127,6 @@ def main() -> None:
     gate_preview_clean()
     gate_cache_mtime_invalidation()
     gate_writing_warning()
-    gate_resume_detect()
     gate_segment_flag()
     print("S2 引擎层 ALL PASS ✅")
 

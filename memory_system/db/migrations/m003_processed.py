@@ -1,13 +1,14 @@
-"""003 processed —— 段级「已处理」flag + 会话级 resume 水位(S2 决定)。
+"""003 processed —— 段级「已处理」flag + 会话级处理水位(S2 决定)。
 
 去重粒度:段级,一段一行(非每消息一行)。覆盖的 message-uuid 集合作紧凑 JSON
-挂在段行上;段哈希 = 排序后 uuid 集的 sha1 → resume 复刻保留 uuid,同段同哈希,幂等。
+挂在段行上;段哈希 = 排序后 uuid 集的 sha1 → 选中回合集的顺序无关稳定身份,幂等判重。
 
 processed_segments:人工选段(及之后提取出的 episode)覆盖了哪些消息。
-session_watermark:每会话处理到的 leaf uuid,供 resume 续点判断。
+session_watermark:每会话处理到的 leaf uuid,标记「上次处理到哪」。
 
-注:这是操作态(人工选段的书签),不是记忆正本。episode 落地后其碎片会自带
-covered_uuids,届时可由 index rebuild 回填 episode-backed 的段;纯选未提取的段不参与重建。
+注:这是纯操作态(人工选段的编辑辅助书签),不是记忆正本,**不参与碎片重建**。
+碎片里绝不含 uuid(三铁律),故删库 rebuild 后本表为空、已处理标记不恢复——这是
+可接受代价:书签丢了顶多重看一段对话,记忆正本(碎片)完好。
 """
 
 from __future__ import annotations

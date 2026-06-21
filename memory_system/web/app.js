@@ -1,7 +1,7 @@
 "use strict";
 
 // 当前 transcript 状态
-let CUR = null;            // {path, session_id, turns, resume, ...}
+let CUR = null;            // {path, session_id, turns, ...}
 const SEL = new Set();     // 选中的回合 idx
 
 const $ = (s) => document.querySelector(s);
@@ -25,6 +25,12 @@ async function loadList() {
   const d = await r.json();
   const box = $("#t-items");
   box.innerHTML = "";
+  if (d.hidden_empty) {
+    const note = document.createElement("div");
+    note.className = "list-note";
+    note.textContent = `已隐藏 ${d.hidden_empty} 个空会话(/clear 空壳等)`;
+    box.appendChild(note);
+  }
   d.transcripts.forEach((t) => {
     const el = document.createElement("div");
     el.className = "t-item";
@@ -32,7 +38,7 @@ async function loadList() {
     el.innerHTML =
       `<div><span class="sid">${t.session_id.slice(0, 8)}</span>` +
       (t.maybe_writing ? `<span class="badge">正在写入</span>` : "") + `</div>` +
-      `<div class="meta">${fmtTime(t.mtime)} · ${t.line_count}行 · ${fmtSize(t.size)}</div>` +
+      `<div class="meta">${fmtTime(t.mtime)} · ${t.turn_count}回合 · ${fmtSize(t.size)}</div>` +
       `<div class="meta">${t.cwd || ""}</div>`;
     el.onclick = () => loadTranscript(t.path, el);
     box.appendChild(el);
@@ -57,17 +63,9 @@ function render() {
     (d.maybe_writing ? "  ⚠ 可能正在写入" : "");
   const box = $("#turns");
   box.innerHTML = "";
-  const bp = d.resume.is_resume ? d.resume.breakpoint_idx : 0;
   d.turns.forEach((t) => {
-    if (bp && t.idx === bp) {
-      const div = document.createElement("div");
-      div.className = "bp";
-      div.textContent = `↑ 以上 ${d.resume.copied_turns} 回合复刻自更早的会话(断点在此)`;
-      box.appendChild(div);
-    }
-    const copied = d.resume.is_resume && t.idx < bp;
     const el = document.createElement("div");
-    el.className = "turn" + (copied ? " copied" : "") + (t.processed ? " done" : "") +
+    el.className = "turn" + (t.processed ? " done" : "") +
                    (SEL.has(t.idx) ? " sel" : "");
     el.dataset.idx = t.idx;
     let html = "";

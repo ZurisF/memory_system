@@ -1,7 +1,8 @@
 """diagnose claude-code —— 实测平台事实,不靠猜(phase1_build S0)。
 
-探:transcript JSONL 在哪、长什么样、message_uuid 形态、role、resume 断点信号
-(.attachment.isInitial / 类 last_prompt),落一份 markdown 报告到 diagnostics/。
+探:transcript JSONL 在哪、长什么样、message_uuid 形态、role、isInitial 出现频次
+(开场注入标记,非 resume 信号——生命周期已定论,见 session-jsonl-lifecycle.md),
+落一份 markdown 报告到 diagnostics/。
 """
 
 from __future__ import annotations
@@ -59,7 +60,7 @@ def _scan_file(path: Path, max_lines: int = 4000) -> dict:
                 roles[str(msg["role"])] += 1
             elif "role" in rec:
                 roles[str(rec["role"])] += 1
-            # resume 信号:任意层级出现 isInitial
+            # isInitial 数点(开场注入标记,非 resume 信号 —— 见生命周期文档)
             if _deep_has_key(rec, "isInitial"):
                 has_is_initial += 1
     return {
@@ -129,10 +130,13 @@ def diagnose_claude_code(cfg: Config) -> Path:
             lines.append("```")
 
     lines.append("")
-    lines.append("## 待人工确认的结论(填空)")
-    lines.append("- [ ] message_uuid 用哪个字段?跨 resume 续写是否稳定?")
-    lines.append("- [ ] resume 断点:isInitial 的可靠性?是否需配合 last_prompt 重复判断?")
-    lines.append("- [ ] SessionStart 注入的可用形态?")
+    lines.append("## 已定论(见 project/session-jsonl-lifecycle.md)")
+    lines.append("- [x] message_uuid = `uuid` 字段 + `parentUuid` 串链;一会话=一文件。")
+    lines.append("- [x] `/resume` 永远原文件追加,**uuid 不跨文件**;无跨文件复刻前缀,resume 检测取消。")
+    lines.append("- [x] `isInitial` 挂开场注入 attachment,几乎每个新会话都带,**不是 resume 信号**。")
+    lines.append("- [x] `/clear` fork ~1945B 空壳垃圾文件;`leafUuid`(last-prompt)是 resume 定位锚。")
+    lines.append("## 仍待确认")
+    lines.append("- [ ] SessionStart 注入的可用形态?(S8 前实测)")
 
     cfg.diagnostics_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
