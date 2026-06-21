@@ -16,15 +16,30 @@
 - **新增**:transcript 列表自动剔除清洗后 0 回合的空壳(`/clear` stub 等),返回
   `hidden_empty` 计数。
 
+## 安全评估后修复(2026-06-20 续场二)
+
+正本完整性 + 安全四条,趁碎片还没几份焊死:
+
+- **#6 node 文件名碰撞 → 已修**:`_safe_node_filename` 加全 label 短 sha1 后缀,不同
+  label(含 macOS 大小写不敏感)永不塌成同名静默覆盖正本。
+- **#7 server 任意文件读 → 已修**:`/api/transcript`、`/api/select` 的 path 经 realpath
+  校验必须落在 `transcripts_root` 内,越界返回 404。
+- **新 A:frontmatter 换行 → 已修**:`_fm_scalar`/`_fm_list` 写入前拒绝含换行的标量/
+  列表项,LLM 吐出的坏 label/keyword 在闸口报错,不产出不可解析的碎片。
+- **新 B:rebuild 非原子 → 已修**:先 parse 所有碎片 + 联网重嵌(可失败的事全做完),
+  全部成功才 `_clear` + 灌库;坏碎片/网络失败不再留下半清空的库。
+
 ## 待办(尚未处理)
 
-下面 #2 #4 #5 #6 #7 仍在;#1 #3 #8 见上「已修复」。
+#4 迁移器 `MAX(version)`、#5 rebuild 全量重嵌(原子性已改善,但仍每次重嵌)、
+无 `busy_timeout`(并发写偶发锁)、`sweep_stale` 未接线(preview 缓存无限增长)、
+`/api/transcripts` 冷缓存首次列表需 clean 全部文件(可加便宜预筛)。均不阻塞 S3。
 
 ## 当前实际状态
 
 - 项目是 Python 包,入口命令是 `memory-system`。
 - 已有 S1/S2 的一部分实现:SQLite 迁移、碎片读写、`index rebuild`、transcript 清洗预览、段级 processed 标记、本地前端。
-- 本地前端只做到 S2 级别:浏览 transcript、显示 resume 断点、选择回合并标记为已处理。
+- 本地前端只做到 S2 级别:浏览 transcript(隐藏空壳)、选择回合并标记为已处理。
 - 还没有 S3/S4/S5:切块 agent、提取 agent、staging 审核、编辑五件套、归档 active 的完整 GUI 流程。
 
 ## 已知隐患

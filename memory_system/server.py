@@ -24,6 +24,19 @@ _WEB = Path(__file__).parent / "web"
 
 
 def make_handler(cfg: Config):
+    def _confine(raw: str) -> Path | None:
+        """把传入 path 限制在 transcripts_root 内;越界/无效返回 None(堵任意文件读)。"""
+        if not raw:
+            return None
+        try:
+            p = Path(raw).expanduser().resolve()
+            base = cfg.transcripts_root.resolve()
+        except (OSError, RuntimeError):
+            return None
+        if p != base and base not in p.parents:
+            return None
+        return p
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):  # 静音默认请求日志
             pass
@@ -77,9 +90,9 @@ def make_handler(cfg: Config):
                         "hidden_empty": hidden_empty, "transcripts": items})
 
         def _api_transcript(self, q) -> None:
-            path = Path((q.get("path") or [""])[0]).expanduser()
-            if not path.exists():
-                return self._json({"error": "文件不存在"}, 404)
+            path = _confine((q.get("path") or [""])[0])
+            if path is None or not path.exists():
+                return self._json({"error": "路径越界或文件不存在"}, 404)
             info = describe(path)
             ct = preview_cache.get(cfg.preview_cache_dir, path, mtime=info.mtime)
             con = connect(cfg.db_path)
@@ -113,10 +126,10 @@ def make_handler(cfg: Config):
             self._api_select(body)
 
         def _api_select(self, body) -> None:
-            path = Path(body.get("path", "")).expanduser()
+            path = _confine(body.get("path", ""))
             turn_idxs = set(body.get("turn_idxs") or [])
-            if not path.exists() or not turn_idxs:
-                return self._json({"error": "缺 path 或 turn_idxs"}, 400)
+            if path is None or not path.exists() or not turn_idxs:
+                return self._json({"error": "路径越界、缺 path 或 turn_idxs"}, 400)
             ct = preview_cache.get(cfg.preview_cache_dir, path)
             uuids: list[str] = []
             for t in ct.turns:

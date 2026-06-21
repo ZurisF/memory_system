@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass, field
@@ -57,8 +58,19 @@ class Node:
 # ---- frontmatter 原子读写 ----
 
 
+def _check_inline(key: str, value: object) -> None:
+    """frontmatter 是逐行格式:标量/列表项绝不能含换行/回车,否则写出的碎片读不回来。
+    LLM 产出的 label/keyword 不可信,在写入闸口报错,绝不产出不可解析的正本。"""
+    if value is None:
+        return
+    s = str(value)
+    if "\n" in s or "\r" in s:
+        raise ValueError(f"frontmatter 字段 {key!r} 含换行,无法安全写入碎片: {s!r}")
+
+
 def _fm_scalar(key: str, value: str | int | None) -> str:
     """标量行:None → 'key:';其余 → 'key: value'。"""
+    _check_inline(key, value)
     if value is None or value == "":
         return f"{key}:"
     return f"{key}: {value}"
@@ -66,6 +78,8 @@ def _fm_scalar(key: str, value: str | int | None) -> str:
 
 def _fm_list(key: str, items: list[str]) -> list[str]:
     """块状列表:空 → ['key:'];否则逐行 '  - 值'。"""
+    for it in items:
+        _check_inline(key, it)
     if not items:
         return [f"{key}:"]
     return [f"{key}:"] + [f"  - {it}" for it in items]
@@ -281,9 +295,15 @@ def episode_path(episodes_dir: Path, public_id: str) -> Path:
 
 
 def _safe_node_filename(label: str) -> str:
-    """label → 安全文件名;label 正本在 frontmatter,文件名只求唯一可读。"""
+    """label → 安全文件名;label 正本在 frontmatter,文件名只求唯一可读。
+
+    加全 label 的短 sha1 后缀:不同 label 即使清洗/截断后撞名(或 macOS 大小写
+    不敏感),hash 不同 → 文件名不同 → 不会静默覆盖另一个 node 正本。
+    """
     slug = re.sub(r'[/\\:*?"<>|\x00-\x1f]', "_", label).strip().strip(".")
-    return (slug or "node")[:80]
+    slug = (slug or "node")[:80]
+    digest = hashlib.sha1(label.encode("utf-8")).hexdigest()[:8]
+    return f"{slug}__{digest}"
 
 
 def node_path(nodes_dir: Path, label: str) -> Path:

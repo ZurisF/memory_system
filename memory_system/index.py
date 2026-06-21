@@ -93,10 +93,12 @@ def _clear(con: sqlite3.Connection) -> None:
     con.commit()
 
 
-def _load_nodes(con: sqlite3.Connection, cfg: Config, report: RebuildReport) -> dict[str, int]:
-    """灌 node 碎片 → nodes/aliases,返回 label → node_id。"""
+def _insert_nodes(
+    con: sqlite3.Connection, nodes: list, report: RebuildReport
+) -> dict[str, int]:
+    """灌已 parse 的 node 列表 → nodes/aliases,返回 label → node_id。"""
     label_to_id: dict[str, int] = {}
-    for _path, nd in load_all_nodes(cfg.nodes_dir):
+    for _path, nd in nodes:
         cur = con.execute(
             "INSERT INTO nodes(label, type, created_at, updated_at) VALUES (?,?,?,?)",
             (nd.label, nd.type, nd.created_at, nd.updated_at),
@@ -130,19 +132,36 @@ def _ensure_node(
     return nid
 
 
-def _load_episodes(
+def _embed_overviews(
+    cfg: Config, provider: EmbeddingProvider, eps: list, dim: int
+) -> list[list[float]]:
+    """联网重嵌所有 overview(分批 ≤ batch_size),返回与 eps 对齐的向量列表。
+
+    在碰 DB 内容之前调用:网络失败/维度不符在此抛,不会留下半清空的库。
+    """
+    overviews = [ep.overview for _path, ep in eps]
+    vectors: list[list[float]] = []
+    bs = max(1, cfg.embedding.batch_size)
+    for i in range(0, len(overviews), bs):
+        batch = overviews[i : i + bs]
+        for vec in provider.embed(batch):
+            if len(vec) != dim:
+                raise ValueError(f"overview 向量维度 {len(vec)} ≠ meta 锁 {dim},拒写")
+            vectors.append(vec)
+    return vectors
+
+
+def _insert_episodes(
     con: sqlite3.Connection,
-    cfg: Config,
-    provider: EmbeddingProvider,
+    eps: list,
+    vectors: list[list[float]],
     label_to_id: dict[str, int],
+    model: str,
+    dim: int,
     report: RebuildReport,
 ) -> None:
-    model, dim = assert_embeddable(con, provider)
-    eps = load_all_episodes(cfg.episodes_dir)
-
-    # 先插 episodes + 膜,收集待嵌 overview
-    pending: list[tuple[int, str]] = []  # (episode_id, overview)
-    for path, ep in eps:
+    """灌已 parse 的 episode 列表 + 膜 + 已算好的向量(纯 DB 写,不再失败)。"""
+    for (path, ep), vec in zip(eps, vectors):
         eid = _insert_episode(con, ep, path, model, dim)
         report.episodes += 1
         for label in ep.nodes:
@@ -152,23 +171,11 @@ def _load_episodes(
                 (eid, nid),
             )
             report.membrane += 1
-        pending.append((eid, ep.overview))
-    con.commit()
-
-    # 批量重嵌 overview → 写 vec0(分批 ≤ batch_size)
-    bs = max(1, cfg.embedding.batch_size)
-    for i in range(0, len(pending), bs):
-        batch = pending[i : i + bs]
-        vecs = provider.embed([ov for _eid, ov in batch])
-        for (eid, _ov), vec in zip(batch, vecs):
-            if len(vec) != dim:
-                raise ValueError(f"episode {eid} 向量维度 {len(vec)} ≠ meta 锁 {dim},拒写")
-            con.execute(
-                "INSERT INTO episode_vectors(episode_id, embedding) VALUES (?, ?)",
-                (eid, sqlite_vec.serialize_float32(vec)),
-            )
-            report.vectors += 1
-    con.commit()
+        con.execute(
+            "INSERT INTO episode_vectors(episode_id, embedding) VALUES (?, ?)",
+            (eid, sqlite_vec.serialize_float32(vec)),
+        )
+        report.vectors += 1
 
 
 def _insert_episode(
@@ -210,14 +217,25 @@ def _insert_episode(
 
 
 def rebuild(cfg: Config, provider: EmbeddingProvider) -> RebuildReport:
-    """从碎片全量重建 DB。DB 不存在则建库迁移;存在则清空内容后重灌。"""
+    """从碎片全量重建 DB。DB 不存在则建库迁移;存在则清空内容后重灌。
+
+    **fail-fast 原子**:所有可失败的工作(parse 碎片、联网重嵌)都在 `_clear` 之前
+    做完;任一步抛错则 DB 内容原封不动,绝不留下半清空的库。
+    """
     con = connect(cfg.db_path)
     try:
         migrate.up(con)  # 删库后重建 schema;已存在则无操作
         report = RebuildReport()
+        # ---- 阶段一:碰 DB 内容之前,把会失败的事全做完 ----
+        nodes = load_all_nodes(cfg.nodes_dir)        # 坏 node 碎片在此 fail-fast
+        eps = load_all_episodes(cfg.episodes_dir)    # 坏 episode 碎片在此 fail-fast
+        model, dim = assert_embeddable(con, provider)  # 锁校验/落锁(不清内容)
+        vectors = _embed_overviews(cfg, provider, eps, dim)  # 联网失败也在清库前抛
+        # ---- 阶段二:全部成功,才动 DB 内容 ----
         _clear(con)
-        label_to_id = _load_nodes(con, cfg, report)
-        _load_episodes(con, cfg, provider, label_to_id, report)
+        label_to_id = _insert_nodes(con, nodes, report)
+        _insert_episodes(con, eps, vectors, label_to_id, model, dim, report)
+        con.commit()
         return report
     finally:
         con.close()
