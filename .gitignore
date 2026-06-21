@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# 本地数据主目录(若有人把它建在仓内)与任何密钥
+.memory_system/
+*.db
+*.db-wal
+*.db-shm
+.env
