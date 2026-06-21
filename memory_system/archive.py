@@ -1,8 +1,12 @@
 """归档引擎 —— staging 五件套 → active 碎片正本 + 增量同步 SQLite(S5 入库闭环)。
 
 碎片是正本(idea_v2 §12.13):confirm 把这一条增量插进 DB(episode + 膜 + 向量,FTS 触发器
-自动),DB 失败则不留 episode 碎片、staging 原封不动,可干净重试;删库后 `index rebuild` 仍能
-从碎片无损还原。
+自动),DB 失败则**不写任何碎片(含 node)、staging 原封不动**,可干净重试;删库后
+`index rebuild` 仍能从碎片无损还原。
+
+落地顺序硬约束:node 三选一先只在内存里规划(`_plan_nodes`),所有可失败动作(embedding、
+向量插入、DB 约束)都在事务内做完并 commit 之后,才把 node 碎片与 episode 碎片原子写盘、再清
+staging。否则 DB 阶段失败会留下未确认的 node 碎片/别名,污染后续提取 agent 的 existing_nodes。
 
 三个动作(idea_v2 §9 两条退场通道):
   confirm  staging →(人工确认)→ active   :node 三选一落地(别名合并)、写碎片、增量插 DB,清 staging。
@@ -56,16 +60,21 @@ def _new_public_id(episodes_dir: Path) -> str:
     raise ArchiveError("public_id 连续 100 次相撞,异常")  # 4 字节随机,实务不可达
 
 
-# ---- node 三选一落地(碎片层,确认时别名合并生效)----
+# ---- node 三选一规划(纯内存,确认时别名合并生效;DB 成功后才落盘)----
 
-def _land_nodes(cfg: Config, staging_nodes: list[dict]) -> list[str]:
-    """把 staging 的 nodes(带 action/new_alias)落成 node 碎片,返回去重的膜 label 列表。
+def _plan_nodes(cfg: Config, staging_nodes: list[dict]) -> tuple[list[str], dict[str, Node]]:
+    """规划 staging 的 nodes(带 action/new_alias)三选一,**不落盘**。
 
-    - new:无碎片则新建。
-    - add_alias:目标碎片在则并入别名(去重);目标不在则退化为带该别名的新建。
-    - match_existing:目标碎片应在;缺则补建空 node(膜不悬空)。
+    返回 `(去重膜 label 列表, {label: 待写 Node 最终态})`。`planned` 只含需要新建或改别名的
+    node;已存在且复用(match_existing)的不在内,留待 DB 同步时读现有碎片。落盘推迟到
+    `confirm_episode` 里 DB commit 成功之后,保证失败不留碎片。
+
+    - new:无碎片则规划新建。
+    - add_alias:目标碎片在则并入别名(去重后规划回写);目标不在则退化为带该别名的新建。
+    - match_existing:目标碎片在则复用(不进 planned);缺则补建空 node(膜不悬空)。
     """
     labels: list[str] = []
+    planned: dict[str, Node] = {}
     for nd in staging_nodes:
         label = nd.get("label")
         if not label:
@@ -78,23 +87,29 @@ def _land_nodes(cfg: Config, staging_nodes: list[dict]) -> list[str]:
             if alias and alias not in node.aliases:
                 node.aliases.append(alias)
                 node.updated_at = _now()
-                write_node(cfg.nodes_dir, node)
+                planned[label] = node
         elif not p.exists():
             now = _now()
-            write_node(cfg.nodes_dir, Node(
+            planned[label] = Node(
                 label=label, created_at=now, updated_at=now,
                 aliases=[alias] if (action == "add_alias" and alias) else [],
-            ))
+            )
         if label not in labels:
             labels.append(label)
-    return labels
+    return labels, planned
 
 
-def _upsert_node_db(con: sqlite3.Connection, cfg: Config, label: str) -> int:
-    """把 label 的 node 碎片同步进 DB(节点行 + 别名,幂等),返回 node_id。"""
+def _upsert_node_db(
+    con: sqlite3.Connection, cfg: Config, label: str, planned: Node | None
+) -> int:
+    """把 label 的 node 同步进 DB(节点行 + 别名,幂等),返回 node_id。
+
+    优先用本次 confirm 规划的内存态 `planned`(碎片此刻还没落盘);为 None 表示 match_existing
+    复用已有碎片,从盘上读。
+    """
     row = con.execute("SELECT id FROM nodes WHERE label=?", (label,)).fetchone()
     p = node_path(cfg.nodes_dir, label)
-    node = read_node(p) if p.exists() else None
+    node = planned or (read_node(p) if p.exists() else None)
     if row:
         nid = row[0]
     elif node:
@@ -132,8 +147,8 @@ def confirm_episode(
     frag_path = episode_path(cfg.episodes_dir, public_id)  # 仅算路径,DB 成功后才落文件
     now = _now()
 
-    # node 落地(别名合并;幂等,DB 失败也无害)
-    labels = _land_nodes(cfg, ep_doc.get("nodes") or [])
+    # node 规划(别名合并算定,纯内存不落盘;DB 成功后才写碎片)
+    labels, planned = _plan_nodes(cfg, ep_doc.get("nodes") or [])
 
     ep = Episode(
         public_id=public_id,
@@ -161,7 +176,7 @@ def confirm_episode(
             raise ArchiveError(f"overview 向量维度 {len(vec)} ≠ meta 锁 {dim},拒写")
         eid = insert_episode(con, ep, frag_path, model, dim)  # FTS 触发器随 INSERT 同步
         for label in labels:
-            nid = _upsert_node_db(con, cfg, label)
+            nid = _upsert_node_db(con, cfg, label, planned.get(label))
             con.execute(
                 "INSERT OR IGNORE INTO episode_nodes(episode_id,node_id) VALUES(?,?)", (eid, nid)
             )
@@ -176,7 +191,9 @@ def confirm_episode(
     finally:
         con.close()
 
-    # DB 落定,才写正本碎片,再清 staging(工作态消费完)
+    # DB 落定,才把碎片正本原子写盘:先 node 三选一(规划态),再 episode,最后清 staging。
+    for node in planned.values():
+        write_node(cfg.nodes_dir, node)
     write_episode(cfg.episodes_dir, ep)
     staging_store.remove_episode(sdir, session_id, stage_id)
     return public_id

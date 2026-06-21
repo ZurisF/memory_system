@@ -23,7 +23,7 @@ from memory_system.preprocess import CleanedTranscript, render_for_chunk
 MAX_CHARS = 120_000  # 渲染文本超此即报错让人工先粗分(opus 200k token 窗够,但再大切块质量掉)
 SHORT_TURNS = 15     # 少于此回合数算 short(与 prompt 一致)
 
-_NUM = re.compile(r"(\d+)")
+_TURN_REF = re.compile(r"\s*(?:回合|turn|t|#)?\s*(\d+)\s*", re.IGNORECASE)
 _PROMPT_PATH = Path(__file__).parent / "prompts" / "chunk_system.txt"
 
 
@@ -68,10 +68,20 @@ def uuids_by_turn(ct: CleanedTranscript) -> dict[int, list[str]]:
 
 
 def _parse_turn_ref(v) -> int:
-    """把 5 / '5' / '回合5' / 'T5' 解析成回合号整数;无法解析抛 ValueError。"""
+    """把 5 / '5' / '回合5' / 'T5' 解析成回合号整数;非整数或无法解析抛 ValueError。
+
+    宽容 agent 的格式包裹(回合/turn/T/# 前缀),但不接受小数、夹带其它字符:'5.5'、
+    'abc'、'1-2' 都报错(P1-A:坏回合号走重试,不蒙混)。
+    """
+    if isinstance(v, bool):  # bool 是 int 子类,单独挡掉
+        raise ValueError(f"回合号非整数: {v!r}")
     if isinstance(v, int):
         return v
-    m = _NUM.search(str(v))
+    if isinstance(v, float):
+        if v.is_integer():
+            return int(v)
+        raise ValueError(f"回合号非整数: {v!r}")
+    m = _TURN_REF.fullmatch(str(v))
     if not m:
         raise ValueError(f"无法解析回合号: {v!r}")
     return int(m.group(1))
@@ -89,11 +99,13 @@ def _normalize_segment(raw: dict, n_turns: int, umap: dict[int, list[str]], *, o
         raise ValueError(f"段缺 start/end: {raw!r}")
     a = _parse_turn_ref(raw["start"])
     b = _parse_turn_ref(raw["end"])
+    # agent 路径严校(P1-A):回合号必须落在真实回合集合内、start<=end。坏边界抛 ValueError
+    # 走现有重试/告警,绝不静默交换或夹紧——否则 0-999 会被当成全篇、50-20 被悄悄翻面。
+    # (manual_segments 的友好夹紧/交换是另一条路径,与此分开,见该函数。)
+    if a not in umap or b not in umap:
+        raise ValueError(f"段边界越界 {a}-{b}(真实回合 1-{n_turns})")
     if a > b:
-        a, b = b, a
-    # 钉进 [1, n_turns],挡越界(不静默丢,夹紧)
-    a = max(1, min(a, n_turns))
-    b = max(1, min(b, n_turns))
+        raise ValueError(f"段边界逆序 start={a} > end={b}")
     deletions = raw.get("deletions") or []
     if not isinstance(deletions, list):
         raise ValueError(f"deletions 非列表: {deletions!r}")

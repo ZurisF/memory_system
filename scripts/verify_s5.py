@@ -249,4 +249,59 @@ finally:
     con.close()
 ok("回归:删库 rebuild 无损还原(2 episode/3 node/4 膜/2 向量,archived 状态保留)")
 
+
+# ============ 门 H:confirm DB 阶段失败不留碎片、staging 不动、可干净重试(P1)============
+class _BadDimProvider(FakeProvider):
+    """报 dim=16 过 meta 锁,但 embed 故意返回 15 维 → confirm 在向量维度校验处失败。"""
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return [[0.0] * (self.dim - 1) for _ in texts]
+
+
+ctf = mk_ct(10, session="sess-fail")
+segf = manual_segments(ctf, [(1, 10)])
+segf[0]["seg_id"] = "s1"
+bf = make_extraction(
+    overview="失败路径测试段 overview。", summary="失败路径段。",
+    nodes=[{"label": "崩溃概念", "action": "new", "reason": "失败时不应落地"}],
+    salience_tier=1,
+)
+fbatch = extract_segments(ctf, segf, FakeChatProvider(behaviors=[bf]), [],
+                          model="opus", timeout=10, max_retries=0)
+assert len(fbatch.staged) == 1
+fseg, fres, fsrc = fbatch.staged[0]
+staging_store.upsert_episode(CFG.staging_episodes_dir, ctf.session_id, ctf.path, fseg, fres, fsrc,
+                             created_at="2026-06-19T22:01:00Z")
+
+con = connect(CFG.db_path)
+try:
+    (ep_before,) = con.execute("SELECT COUNT(*) FROM episodes").fetchone()
+    (node_before,) = con.execute("SELECT COUNT(*) FROM nodes").fetchone()
+finally:
+    con.close()
+
+failed = False
+try:
+    archive.confirm_episode(CFG, ctf.session_id, "e1", _BadDimProvider(model="fake", dim=16))
+except archive.ArchiveError:
+    failed = True
+assert failed, "维度不符的 confirm 应抛 ArchiveError"
+# DB 阶段失败:不写任何碎片(含 node)、staging 原封不动、DB 不增 → 可干净重试
+assert not node_path(CFG.nodes_dir, "崩溃概念").exists(), "DB 失败不应写 node 碎片(P1 核心)"
+assert staging_store.get_episode(CFG.staging_episodes_dir, ctf.session_id, "e1") is not None, \
+    "失败后 staging 应原封不动"
+con = connect(CFG.db_path)
+try:
+    (ep_mid,) = con.execute("SELECT COUNT(*) FROM episodes").fetchone()
+    (node_mid,) = con.execute("SELECT COUNT(*) FROM nodes").fetchone()
+    assert ep_mid == ep_before and node_mid == node_before, "失败不应增 DB 行"
+finally:
+    con.close()
+# 修好 provider 后干净重试,这次落地成功
+pidf = archive.confirm_episode(CFG, ctf.session_id, "e1", FakeProvider(model="fake", dim=16))
+assert node_path(CFG.nodes_dir, "崩溃概念").exists(), "重试成功才落地 node 碎片"
+assert episode_path(CFG.episodes_dir, pidf).exists()
+assert staging_store.get_episode(CFG.staging_episodes_dir, ctf.session_id, "e1") is None
+ok("confirm DB 失败:不写碎片(含 node)、staging 不动、DB 不增;修好后干净重试成功(P1)")
+
 print("S5 审核/归档层 ALL PASS ✅")

@@ -156,4 +156,35 @@ ui = _ui_segment(reloaded["segments"][0])
 assert "covered_uuids" not in ui and "start_turn" in ui
 ok("送前端的段剥除 covered_uuids(uuid 不上台面)")
 
+# ---- 门 7:agent 坏边界严校 → 失败走重试,不静默夹紧/交换(P1-A)----
+from memory_system.chunk import _parse_turn_ref  # noqa: E402
+
+ct7 = mk_ct(20)  # 真实回合 1..20
+for bad, why in [
+    (make_segments([{"start": 0, "end": 999, "tag": "x", "cut_reason": "", "deletions": []}]), "越界 0-999"),
+    (make_segments([{"start": 50, "end": 20, "tag": "x", "cut_reason": "", "deletions": []}]), "越界 50-20"),
+    (make_segments([{"start": 10, "end": 3, "tag": "x", "cut_reason": "", "deletions": []}]), "逆序 10-3"),
+    (make_segments([{"start": "5.5", "end": 8, "tag": "x", "cut_reason": "", "deletions": []}]), "非整数 5.5"),
+]:
+    raised = False
+    try:
+        run_chunk(ct7, FakeChatProvider(behaviors=[bad]), model="sonnet", timeout=10, max_retries=0)
+    except ChunkFailed:
+        raised = True
+    assert raised, f"坏边界应失败而非静默修正: {why}"
+# 解析器宽容合法包裹、拒非整数/夹带
+assert _parse_turn_ref("回合5") == 5 and _parse_turn_ref("T7") == 7 and _parse_turn_ref(9) == 9
+for bad_ref in ("5.5", "abc", "1-2", 5.5, True):
+    bad_raised = False
+    try:
+        _parse_turn_ref(bad_ref)
+    except ValueError:
+        bad_raised = True
+    assert bad_raised, f"应拒非整数回合号: {bad_ref!r}"
+# manual_segments 仍保留友好夹紧/交换(与 agent 路径分开)
+mc = manual_segments(mk_ct(10), [(0, 999), (8, 3)])
+assert mc[0]["start_turn"] == 1 and mc[0]["end_turn"] == 10, mc[0]
+assert mc[1]["start_turn"] == 3 and mc[1]["end_turn"] == 8, mc[1]
+ok("agent 坏边界(越界/逆序/非整数)抛错走重试;manual 仍友好夹紧;解析器拒非整数")
+
 print("S3 引擎层 ALL PASS ✅")
