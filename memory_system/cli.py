@@ -186,6 +186,81 @@ def cmd_serve(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_chunk(cfg: Config, args: argparse.Namespace) -> int:
+    from dataclasses import replace
+    from pathlib import Path
+
+    from memory_system import preview_cache, segments_store
+    from memory_system.agent import get_chat_provider
+    from memory_system.chunk import (
+        ChunkFailed,
+        OversizedError,
+        manual_segments,
+        run_chunk,
+    )
+
+    log = setup_logging(cfg.logs_dir)
+    path = Path(args.path).expanduser()
+    if not path.exists():
+        print(f"文件不存在: {path}")
+        return 1
+    ct = preview_cache.get(cfg.preview_cache_dir, path)
+    if not ct.turns:
+        print("清洗后 0 回合(空壳),无可切内容")
+        return 1
+    mtime = path.stat().st_mtime
+
+    if args.manual:
+        try:
+            bounds = []
+            for part in args.manual.split(","):
+                a, b = part.split("-")
+                bounds.append((int(a), int(b)))
+        except ValueError:
+            print("--manual 形如 1-8,9-20(回合号)")
+            return 1
+        segs = manual_segments(ct, bounds)
+        doc = segments_store.save_full(cfg.chunks_dir, ct.session_id, str(path), mtime, segs)
+        print(f"手动切块 {len(segs)} 段,落: {segments_store.path_for(cfg.chunks_dir, ct.session_id)}")
+        _print_segments(doc["segments"])
+        return 0
+
+    agent_cfg = cfg.agent if not args.provider else replace(cfg.agent, provider=args.provider)
+    model = args.model or agent_cfg.chunk_model
+    provider = get_chat_provider(agent_cfg)
+    ok, why = provider.available()
+    if not ok:
+        print(f"provider {agent_cfg.provider} 不可用: {why}")
+        return 1
+    try:
+        res = run_chunk(ct, provider, model=model, timeout=agent_cfg.timeout_s,
+                        max_retries=agent_cfg.max_retries)
+    except OversizedError as e:
+        print(f"超大: {e}")
+        return 2
+    except ChunkFailed as e:
+        segments_store.append_retry(cfg.chunks_dir, ct.session_id, str(path), mtime,
+                                    provider=agent_cfg.provider, model=model, error=str(e))
+        log.error("切块失败: %s", e)
+        print(f"切块失败(已记入 retry 列表): {e}")
+        return 1
+    doc = segments_store.record_agent_run(cfg.chunks_dir, ct.session_id, str(path), mtime, res)
+    print(f"切块完成: {len(res.segments)} 段  provider={res.provider} model={res.model} "
+          f"尝试={res.attempts} cost={res.cost_usd}")
+    _print_segments(doc["segments"])
+    return 0
+
+
+def _print_segments(segments: list[dict]) -> None:
+    for s in segments:
+        short = " [short]" if s.get("short") else ""
+        dels = f"  删{len(s.get('deletions') or [])}" if s.get("deletions") else ""
+        print(f"  {s['seg_id']}: 回合 {s['start_turn']}-{s['end_turn']}{short}  "
+              f"[{s.get('origin')}] {s.get('tag') or '(无 tag)'}{dels}")
+        if s.get("cut_reason"):
+            print(f"       ↳ {s['cut_reason']}")
+
+
 def cmd_index(cfg: Config, args: argparse.Namespace) -> int:
     from dataclasses import replace
 
@@ -261,6 +336,13 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("--host", default="127.0.0.1")
     sv.add_argument("--port", type=int, default=8765)
     sv.set_defaults(func=cmd_serve)
+
+    ck = sub.add_parser("chunk", help="切块(Prompt 1):调 agent 建议分段,落工作文件")
+    ck.add_argument("path", help="jsonl 路径")
+    ck.add_argument("--provider", default=None, help="覆盖 agent provider(claude_cli/deepseek/fake)")
+    ck.add_argument("--model", default=None, help="覆盖切块模型(默认 sonnet)")
+    ck.add_argument("--manual", default=None, help="手动切块,形如 1-8,9-20(回合号),不走 agent")
+    ck.set_defaults(func=cmd_chunk)
 
     ixp = sub.add_parser("index", help="索引重建")
     ixsub = ixp.add_subparsers(dest="action", required=True)

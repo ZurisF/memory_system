@@ -174,6 +174,23 @@ def clean(path: Path) -> CleanedTranscript:
     return ct
 
 
+def render_for_chunk(ct: CleanedTranscript) -> str:
+    """切块 agent 的输入:每回合一个显式编号块【N】,杜绝按物理行计数的错位。
+
+    回合是回映 uuid 的单位,agent 直接用回合号作 start/end,无需数行。
+    多行发言原样保留在块内(块号不变)。
+    """
+    blocks: list[str] = []
+    for t in ct.turns:
+        parts = [f"【回合 {t.idx}】"]
+        if t.human_text:
+            parts.append(f"[我]: {t.human_text}")
+        if t.assistant_text:
+            parts.append(f"[Claude]: {t.assistant_text}")
+        blocks.append("\n".join(parts))
+    return "\n\n---\n\n".join(blocks)
+
+
 def render(ct: CleanedTranscript) -> tuple[str, list[dict]]:
     """渲染成 [我]/[Claude] 文本(--- 分隔),返回 (文本, 行号→回合映射)。
 

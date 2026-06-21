@@ -3,19 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>memory_system · 选段</title>
+<title>memory_system · 选段 + 切块</title>
 <style>
   :root { --bg:#1a1b1e; --panel:#232529; --line:#33363c; --fg:#dfe1e5;
           --muted:#8a8f98; --me:#7aa2f7; --claude:#9ece6a; --warn:#e0af68;
-          --done:#565a63; --sel:#2d3f5e; }
+          --err:#f7768e; --done:#565a63; --sel:#2d3f5e; }
   * { box-sizing:border-box; }
   body { margin:0; font:14px/1.6 -apple-system,system-ui,"PingFang SC",sans-serif;
          background:var(--bg); color:var(--fg); height:100vh; display:flex; }
-  #list { width:300px; flex:none; border-right:1px solid var(--line);
+  #list { width:260px; flex:none; border-right:1px solid var(--line);
           overflow-y:auto; background:var(--panel); }
-  #list h2, #main h2 { font-size:12px; text-transform:uppercase; letter-spacing:.5px;
+  #list h2, #main h2, #seg h2 { font-size:12px; text-transform:uppercase; letter-spacing:.5px;
           color:var(--muted); padding:12px 14px 6px; margin:0; position:sticky; top:0;
-          background:var(--panel); }
+          background:var(--panel); z-index:2; }
   .t-item { padding:8px 14px; border-bottom:1px solid var(--line); cursor:pointer; }
   .t-item:hover { background:#2a2d33; }
   .t-item.active { background:var(--sel); }
@@ -23,46 +23,103 @@
   .t-item .meta { color:var(--muted); font-size:12px; }
   .badge { display:inline-block; font-size:11px; padding:0 6px; border-radius:8px;
            background:var(--warn); color:#1a1b1e; margin-left:6px; }
-  #main { flex:1; overflow-y:auto; padding-bottom:80px; }
+  #main { flex:1; overflow-y:auto; padding-bottom:70px; }
   #main h2 { background:var(--bg); }
   #hint { color:var(--muted); padding:14px; }
   .list-note { color:var(--muted); font-size:11px; padding:6px 12px; font-style:italic; }
-  .turn { margin:8px 14px; padding:10px 12px; border:1px solid var(--line);
-          border-radius:8px; cursor:pointer; position:relative; }
+  .turn { margin:8px 14px; padding:10px 12px 10px 16px; border:1px solid var(--line);
+          border-radius:8px; cursor:pointer; position:relative; border-left-width:4px; }
   .turn:hover { border-color:var(--me); }
-  .turn.sel { border-color:var(--me); background:var(--sel); }
-  .turn.done { border-style:dashed; }
+  .turn.sel { outline:2px solid var(--me); background:var(--sel); }
+  .turn.done { border-top-style:dashed; }
+  .turn.del { opacity:.45; text-decoration:line-through; }
   .turn .who { font-weight:600; }
   .turn .me { color:var(--me); }
   .turn .claude { color:var(--claude); }
   .turn .txt { white-space:pre-wrap; margin:2px 0 8px; }
   .turn .tmeta { color:var(--muted); font-size:12px; }
-  .turn .done-tag { color:var(--done); font-size:11px; position:absolute;
-          top:8px; right:10px; }
-  #bar { position:fixed; bottom:0; left:300px; right:0; background:var(--panel);
-         border-top:1px solid var(--line); padding:10px 16px; display:flex;
-         align-items:center; gap:14px; }
-  #bar button { background:var(--me); color:#10131a; border:0; border-radius:6px;
-         padding:8px 16px; font-size:14px; cursor:pointer; }
-  #bar button:disabled { background:var(--done); cursor:default; }
+  .turn .seg-chip { font-size:11px; color:var(--muted); margin-left:8px; }
+  .turn .done-tag { color:var(--done); font-size:11px; position:absolute; top:8px; right:10px; }
+
+  /* 右侧段面板 */
+  #seg { width:360px; flex:none; border-left:1px solid var(--line);
+         overflow-y:auto; background:var(--panel); display:flex; flex-direction:column; }
+  #seg .pad { padding:10px 14px; }
+  #seg select, #seg input[type=text], #seg textarea {
+         background:var(--bg); color:var(--fg); border:1px solid var(--line);
+         border-radius:5px; padding:5px 7px; font:13px/1.4 inherit; width:100%; }
+  #seg textarea { resize:vertical; min-height:34px; }
+  #seg .row { display:flex; gap:6px; align-items:center; margin:4px 0; }
+  #seg button { background:#2a2d33; color:var(--fg); border:1px solid var(--line);
+         border-radius:5px; padding:5px 10px; font-size:13px; cursor:pointer; }
+  #seg button:hover { border-color:var(--me); }
+  #seg button.primary { background:var(--me); color:#10131a; border:0; font-weight:600; }
+  #seg button:disabled { opacity:.5; cursor:default; }
+  .seg-card { border:1px solid var(--line); border-left-width:5px; border-radius:7px;
+         margin:8px 14px; padding:8px 10px; }
+  .seg-card .hd { display:flex; align-items:center; gap:6px; font-size:12px;
+         color:var(--muted); margin-bottom:5px; }
+  .seg-card .origin { font-size:10px; padding:0 5px; border-radius:7px;
+         background:#2a2d33; color:var(--muted); }
+  .seg-card .lbl { font-size:11px; color:var(--muted); margin:6px 0 2px; }
+  .seg-card .ops { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+  .seg-card .ops button { padding:3px 8px; font-size:12px; }
+  .alert { margin:8px 14px; padding:8px 10px; border-radius:6px; font-size:13px; }
+  .alert.warn { background:#3a3220; color:var(--warn); border:1px solid var(--warn); }
+  .alert.err { background:#3a2228; color:var(--err); border:1px solid var(--err); }
+  .status { color:var(--muted); font-size:12px; padding:0 14px 6px; }
+  .spin { display:inline-block; animation:sp 1s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+
+  #bar { position:fixed; bottom:0; left:260px; right:360px; background:var(--panel);
+         border-top:1px solid var(--line); padding:9px 16px; display:flex;
+         align-items:center; gap:10px; flex-wrap:wrap; }
+  #bar button { background:#2a2d33; color:var(--fg); border:1px solid var(--line);
+         border-radius:6px; padding:7px 14px; font-size:13px; cursor:pointer; }
+  #bar button.primary { background:var(--me); color:#10131a; border:0; }
+  #bar button:disabled { opacity:.5; cursor:default; }
   #bar .info { color:var(--muted); }
   #toast { position:fixed; top:14px; right:14px; background:var(--claude);
          color:#10131a; padding:8px 14px; border-radius:6px; opacity:0;
-         transition:opacity .3s; }
+         transition:opacity .3s; z-index:9; max-width:50vw; }
   #toast.show { opacity:1; }
+  #toast.bad { background:var(--err); color:#fff; }
 </style>
 </head>
 <body>
   <div id="list"><h2>Transcript</h2><div id="t-items"></div></div>
+
   <div id="main">
-    <h2 id="main-title">选段</h2>
+    <h2 id="main-title">选段 + 切块</h2>
     <div id="hint">← 左侧选一个 transcript</div>
     <div id="turns"></div>
   </div>
+
+  <div id="seg">
+    <h2>切块</h2>
+    <div class="pad">
+      <div class="row">
+        <select id="provider" title="agent 后端"></select>
+      </div>
+      <div class="row">
+        <input type="text" id="model" placeholder="模型(空=默认 sonnet)">
+      </div>
+      <div class="row">
+        <button class="primary" id="run-chunk" style="flex:1" disabled>运行切块 agent</button>
+      </div>
+    </div>
+    <div class="status" id="seg-status"></div>
+    <div id="alerts"></div>
+    <div id="seg-list"></div>
+  </div>
+
   <div id="bar">
+    <button id="make-seg" disabled>选中回合 → 建段</button>
     <button id="mark" disabled>标记选段为已处理</button>
+    <button class="primary" id="save-segs" disabled>保存所有段</button>
     <span class="info" id="sel-info">未选</span>
   </div>
+
   <div id="toast"></div>
   <script src="/app.js"></script>
 </body>

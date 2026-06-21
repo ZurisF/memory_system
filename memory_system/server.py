@@ -4,23 +4,63 @@
 API:
   GET  /api/transcripts            列 transcript(清洗后 0 回合的空壳已剔除)
   GET  /api/transcript?path=...    取清洗回合 + 每回合已处理标记
-  POST /api/select  {path, session_id, turn_idxs}   登记选段为已处理
+  GET  /api/agent/providers        列可用 agent 后端(claude_cli/deepseek/fake)
+  GET  /api/segments?path=...      取该 transcript 的切块工作态(段/agent/retry)
+  POST /api/select   {path, session_id, turn_idxs}  登记选段为已处理
+  POST /api/chunk    {path, provider?, model?}      调切块 agent,落工作文件
+  POST /api/segments {path, segments}               存人工编辑后的段(uuid 服务端重算)
 """
 
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from memory_system import preview_cache, processed
+from memory_system import preview_cache, processed, segments_store
 from memory_system.config import Config
 from memory_system.db import migrate
 from memory_system.db.connection import connect
 from memory_system.transcript import describe, discover
 
 _WEB = Path(__file__).parent / "web"
+
+# 前端 provider 选择器可见的后端;available() 现报是否能用。
+_AGENT_PROVIDERS = ["claude_cli", "deepseek", "fake"]
+
+
+def _providers_info(cfg: Config) -> list[dict]:
+    from memory_system.agent import get_chat_provider
+
+    out = []
+    for pid in _AGENT_PROVIDERS:
+        try:
+            prov = get_chat_provider(replace(cfg.agent, provider=pid))
+            ok, why = prov.available()
+        except Exception as e:  # noqa: BLE001
+            ok, why = False, str(e)
+        out.append({"id": pid, "available": ok, "reason": why,
+                    "default": pid == cfg.agent.provider})
+    return out
+
+
+def _ui_segment(s: dict) -> dict:
+    """送前端的段:剥掉 covered_uuids(uuid 不上台面)。"""
+    return {k: v for k, v in s.items() if k != "covered_uuids"}
+
+
+def _ui_doc(doc: dict | None) -> dict:
+    if not doc:
+        return {"segments": [], "agent": None, "retry": [], "source_mtime": None}
+    return {
+        "segments": [_ui_segment(s) for s in doc.get("segments", [])],
+        "agent": doc.get("agent"),
+        "retry": doc.get("retry", []),
+        "source_mtime": doc.get("source_mtime"),
+        "updated_at": doc.get("updated_at"),
+    }
 
 
 def make_handler(cfg: Config):
@@ -70,7 +110,20 @@ def make_handler(cfg: Config):
                 return self._api_transcripts()
             if u.path == "/api/transcript":
                 return self._api_transcript(parse_qs(u.query))
+            if u.path == "/api/agent/providers":
+                return self._json({"providers": _providers_info(cfg),
+                                   "chunk_model": cfg.agent.chunk_model})
+            if u.path == "/api/segments":
+                return self._api_get_segments(parse_qs(u.query))
             self._send(404, b"not found", "text/plain")
+
+        def _api_get_segments(self, q) -> None:
+            path = _confine((q.get("path") or [""])[0])
+            if path is None or not path.exists():
+                return self._json({"error": "路径越界或文件不存在"}, 404)
+            ct = preview_cache.get(cfg.preview_cache_dir, path)
+            doc = segments_store.load(cfg.chunks_dir, ct.session_id)
+            self._json(_ui_doc(doc))
 
         def _api_transcripts(self) -> None:
             infos = discover(cfg.transcripts_root)
@@ -116,14 +169,95 @@ def make_handler(cfg: Config):
         # ---- POST ----
         def do_POST(self) -> None:
             u = urlparse(self.path)
-            if u.path != "/api/select":
+            if u.path not in ("/api/select", "/api/chunk", "/api/segments"):
                 return self._send(404, b"not found", "text/plain")
             n = int(self.headers.get("Content-Length", 0))
             try:
                 body = json.loads(self.rfile.read(n) or b"{}")
             except json.JSONDecodeError:
                 return self._json({"error": "请求体非 JSON"}, 400)
-            self._api_select(body)
+            if u.path == "/api/select":
+                return self._api_select(body)
+            if u.path == "/api/chunk":
+                return self._api_chunk(body)
+            return self._api_save_segments(body)
+
+        def _api_chunk(self, body) -> None:
+            from dataclasses import replace as _replace
+
+            from memory_system.agent import get_chat_provider
+            from memory_system.chunk import ChunkFailed, OversizedError, run_chunk
+
+            path = _confine(body.get("path", ""))
+            if path is None or not path.exists():
+                return self._json({"error": "路径越界或文件不存在"}, 404)
+            ct = preview_cache.get(cfg.preview_cache_dir, path)
+            if not ct.turns:
+                return self._json({"error": "清洗后 0 回合,无可切内容"}, 400)
+            mtime = path.stat().st_mtime
+
+            agent_cfg = cfg.agent
+            if body.get("provider"):
+                agent_cfg = _replace(agent_cfg, provider=body["provider"])
+            model = body.get("model") or agent_cfg.chunk_model
+            try:
+                provider = get_chat_provider(agent_cfg)
+            except ValueError as e:
+                return self._json({"error": str(e)}, 400)
+            ok, why = provider.available()
+            if not ok:
+                return self._json({"kind": "unavailable", "error": f"provider 不可用: {why}"}, 400)
+
+            try:
+                res = run_chunk(ct, provider, model=model, timeout=agent_cfg.timeout_s,
+                                max_retries=agent_cfg.max_retries)
+            except OversizedError as e:
+                return self._json({"kind": "oversized", "error": str(e),
+                                   "chars": e.chars, "limit": e.limit}, 413)
+            except ChunkFailed as e:
+                segments_store.append_retry(cfg.chunks_dir, ct.session_id, str(path), mtime,
+                                            provider=agent_cfg.provider, model=model, error=str(e))
+                doc = segments_store.load(cfg.chunks_dir, ct.session_id)
+                return self._json({"kind": "failed", "error": str(e),
+                                   "errors": e.errors, **_ui_doc(doc)}, 502)
+            doc = segments_store.record_agent_run(cfg.chunks_dir, ct.session_id,
+                                                  str(path), mtime, res)
+            self._json({"ok": True, **_ui_doc(doc)})
+
+        def _api_save_segments(self, body) -> None:
+            path = _confine(body.get("path", ""))
+            if path is None or not path.exists():
+                return self._json({"error": "路径越界或文件不存在"}, 404)
+            incoming = body.get("segments")
+            if not isinstance(incoming, list):
+                return self._json({"error": "缺 segments 列表"}, 400)
+            ct = preview_cache.get(cfg.preview_cache_dir, path)
+            from memory_system.chunk import uuids_by_turn
+
+            umap = uuids_by_turn(ct)
+            valid_idx = set(umap)
+            mtime = path.stat().st_mtime
+            norm: list[dict] = []
+            for s in incoming:
+                try:
+                    start = int(s["start_turn"]); end = int(s["end_turn"])
+                except (KeyError, TypeError, ValueError):
+                    return self._json({"error": f"段缺/坏 start_turn·end_turn: {s}"}, 400)
+                if start > end or start not in valid_idx or end not in valid_idx:
+                    return self._json({"error": f"段回合越界: {start}-{end}"}, 400)
+                # uuid 不信前端,一律服务端按回合区间重算
+                norm.append({
+                    "seg_id": s.get("seg_id") or "",
+                    "start_turn": start, "end_turn": end,
+                    "tag": str(s.get("tag", "")).strip(),
+                    "cut_reason": str(s.get("cut_reason", "")).strip(),
+                    "short": bool(s.get("short", False)),
+                    "deletions": [d for d in (s.get("deletions") or []) if isinstance(d, dict)],
+                    "origin": s.get("origin") or "edited",
+                    "covered_uuids": segments_store.recompute_uuids(start, end, umap),
+                })
+            doc = segments_store.save_full(cfg.chunks_dir, ct.session_id, str(path), mtime, norm)
+            self._json({"ok": True, **_ui_doc(doc)})
 
         def _api_select(self, body) -> None:
             path = _confine(body.get("path", ""))

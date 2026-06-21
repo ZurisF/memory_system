@@ -20,4 +20,4 @@ memory-system = "memory_system.cli:main"
 include = ["memory_system*"]
 
 [tool.setuptools.package-data]
-memory_system = ["web/*.html", "web/*.js"]
+memory_system = ["web/*.html", "web/*.js", "prompts/*.txt"]

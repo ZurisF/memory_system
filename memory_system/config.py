@@ -49,9 +49,42 @@ def _embedding_from_env() -> EmbeddingConfig:
 
 
 @dataclass(frozen=True)
+class AgentConfig:
+    """切块/提取/重构等 LLM agent 的后端设置(与 embedding 分开)。
+
+    provider=claude_cli 走本机 `claude -p`(复用订阅、不烧 key);deepseek/qwen 等
+    OpenAI 兼容口走 urllib;fake 离线确定性供测试。按角色定默认模型:切块结构活用
+    sonnet 省钱,提取用 opus。key 永远从环境读,绝不落盘、绝不经前端。
+    """
+
+    provider: str = "claude_cli"
+    chunk_model: str = "sonnet"   # S3 切块默认(opus 太烧)
+    extract_model: str = "opus"   # S4 提取默认(当前最新 opus 为 4.8;别名自动指向最新)
+    # OpenAI 兼容后端(deepseek/qwen…)用;claude_cli/fake 不读这两项。
+    base_url: str = "https://api.deepseek.com/v1"
+    api_key_env: str = "DEEPSEEK_API_KEY"
+    timeout_s: int = 90
+    max_retries: int = 2          # 首次失败后再试的次数
+
+
+def _agent_from_env() -> AgentConfig:
+    d = AgentConfig()
+    return AgentConfig(
+        provider=os.environ.get("MEMORY_AGENT_PROVIDER", d.provider),
+        chunk_model=os.environ.get("MEMORY_AGENT_CHUNK_MODEL", d.chunk_model),
+        extract_model=os.environ.get("MEMORY_AGENT_EXTRACT_MODEL", d.extract_model),
+        base_url=os.environ.get("MEMORY_AGENT_BASE_URL", d.base_url),
+        api_key_env=os.environ.get("MEMORY_AGENT_KEY_ENV", d.api_key_env),
+        timeout_s=int(os.environ.get("MEMORY_AGENT_TIMEOUT", str(d.timeout_s))),
+        max_retries=int(os.environ.get("MEMORY_AGENT_MAX_RETRIES", str(d.max_retries))),
+    )
+
+
+@dataclass(frozen=True)
 class Config:
     home: Path = field(default_factory=_home)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
+    agent: AgentConfig = field(default_factory=AgentConfig)
     transcripts_root: Path = field(default_factory=_transcripts_root)
 
     # ---- 主目录布局 ----
@@ -70,6 +103,15 @@ class Config:
     @property
     def nodes_dir(self) -> Path:
         return self.fragments_dir / "nodes"
+
+    @property
+    def staging_dir(self) -> Path:
+        return self.home / "staging"
+
+    @property
+    def chunks_dir(self) -> Path:
+        # 切块工作态:每个 session 一个 <session>.json(可丢弃,非正本)。
+        return self.staging_dir / "chunks"
 
     @property
     def opening_cache_dir(self) -> Path:
@@ -94,6 +136,8 @@ class Config:
             self.fragments_dir,
             self.episodes_dir,
             self.nodes_dir,
+            self.staging_dir,
+            self.chunks_dir,
             self.opening_cache_dir,
             self.logs_dir,
             self.diagnostics_dir,
@@ -108,4 +152,4 @@ def load_config() -> Config:
 
     home = _home()
     load_dotenv(home / ".env")
-    return Config(home=home, embedding=_embedding_from_env())
+    return Config(home=home, embedding=_embedding_from_env(), agent=_agent_from_env())

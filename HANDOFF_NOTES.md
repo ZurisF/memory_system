@@ -16,6 +16,30 @@
 - **新增**:transcript 列表自动剔除清洗后 0 回合的空壳(`/clear` stub 等),返回
   `hidden_empty` 计数。
 
+## S3 切块完工(2026-06-20 续场三)
+
+引擎 + 前端一把过,`python scripts/verify_s3.py` 全绿,真 `claude -p` sonnet 烟测通过。
+
+- **可插拔 chat agent 层** `memory_system/agent/`:`claude_cli`(本机 `claude -p`,复用订阅不烧
+  key,默认 sonnet)、`openai_compat`(DeepSeek/qwen,urllib)、`fake`(离线)。工厂 +
+  `extract_json`(剥 ```json 围栏 / 抠平衡 {})。`AgentConfig` 进 config(`MEMORY_AGENT_*` 覆盖)。
+- **回合制切块**(重要):render 不写显式 L 行号、多行消息令"逻辑行≠物理行",故切块**按回合编号**
+  (`render_for_chunk` 出【回合 N】块,agent 输出回合号),回合是回映 uuid 的统一单位,1:1 直达。
+  prompt 全文在 `memory_system/prompts/chunk_system.txt`(I/O 段已改回合制)。
+- **段是工作态非正本** → `home/staging/chunks/<session>.json`(`segments_store`),不进 DB。
+  每段 `origin: agent|manual|edited` + `covered_uuids`(仅内部,**永不出服务端**)。
+- **错误管理**:超时/坏 JSON 重试 `max_retries`;屡败 `ChunkFailed` → 进 retry 列表 + UI 告警。
+  超大(>12 万字符)`OversizedError`,要人工先粗分,绝不静默截断。
+- **API**:`GET /api/agent/providers`、`POST /api/chunk`、`GET/POST /api/segments`。回存时
+  uuid 一律服务端按回合区间重算(不信前端);送前端的段剥 `covered_uuids`。
+- **前端三栏**:transcript | 回合(段色带覆盖)| 段面板(provider 下拉 + 运行 + 并/分/移边界 +
+  编辑 tag·cut_reason + 标删 + 手动建段 + 保存)。**前端浏览器交互未自动化测试**,靠 API 契约
+  + store 往返测覆盖通过门;接手者首次跑 `serve` 用浏览器过一眼。
+- **待接**:claude 默认走会话模型,已 `--model sonnet` 钉死切块;S4 提取默认 `opus` 别名(无
+  opus-4.6,当前最新 4.8)。`claude -p` 子进程必须 `stdin=DEVNULL`(否则干等 3s)。
+
+详细方案:`../project/s3_chunking_plan.md`。
+
 ## 安全评估后修复(2026-06-20 续场二)
 
 正本完整性 + 安全四条,趁碎片还没几份焊死:
@@ -39,8 +63,8 @@
 
 - 项目是 Python 包,入口命令是 `memory-system`。
 - 已有 S1/S2 的一部分实现:SQLite 迁移、碎片读写、`index rebuild`、transcript 清洗预览、段级 processed 标记、本地前端。
-- 本地前端只做到 S2 级别:浏览 transcript(隐藏空壳)、选择回合并标记为已处理。
-- 还没有 S3/S4/S5:切块 agent、提取 agent、staging 审核、编辑五件套、归档 active 的完整 GUI 流程。
+- 前端到 S3:浏览 transcript、选段标已处理、**切块(运行 agent / 并分移边界 / 手动建段 / 标删 / 保存)**。
+- 还没有 S4/S5:提取 agent(五件套)、staging 审核、归档 active 的完整 GUI 流程。下一步 S4。
 
 ## 已知隐患
 

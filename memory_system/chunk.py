@@ -1,0 +1,174 @@
+"""切块(Prompt 1)—— 把清洗后的对话切成叙事弧线闭合的段。
+
+链路:render_for_chunk(ct) → 回合编号文本 → 切块 agent → extract_json → 校验 →
+每段回合区间 [start_turn, end_turn] 直接回映 covered_uuids。
+
+回合是切块与回映 uuid 的统一单位:agent 输出回合号,不数行(杜绝多行消息的计数错位)。
+
+- 手动切块(manual_segments)不走 agent,始终可用。
+- 超大输入 → OversizedError(带粗分建议),绝不静默截断。
+- agent 失败 → 重试 max_retries 次;屡败 → ChunkFailed(带各次错误,供 retry 列表 + UI 告警)。
+"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
+
+from memory_system.agent import ChatError, ChatProvider, extract_json
+from memory_system.preprocess import CleanedTranscript, render_for_chunk
+
+MAX_CHARS = 120_000  # 渲染文本超此即报错让人工先粗分(opus 200k token 窗够,但再大切块质量掉)
+SHORT_TURNS = 15     # 少于此回合数算 short(与 prompt 一致)
+
+_NUM = re.compile(r"(\d+)")
+_PROMPT_PATH = Path(__file__).parent / "prompts" / "chunk_system.txt"
+
+
+class OversizedError(RuntimeError):
+    """输入过大,需人工先粗分。"""
+
+    def __init__(self, chars: int, limit: int) -> None:
+        self.chars = chars
+        self.limit = limit
+        super().__init__(
+            f"对话渲染后 {chars} 字符 > 上限 {limit};请先人工粗分(按回合分成几块)"
+            f"再逐块切。绝不静默截断。"
+        )
+
+
+class ChunkFailed(RuntimeError):
+    """agent 切块多次失败。errors 为各次失败说明,供 retry 列表与告警。"""
+
+    def __init__(self, errors: list[str]) -> None:
+        self.errors = errors
+        super().__init__(f"切块失败 {len(errors)} 次:" + " | ".join(errors))
+
+
+@dataclass
+class ChunkResult:
+    segments: list[dict]            # 规范化段(无 seg_id,留给 store 分配)
+    provider: str
+    model: str
+    usage: dict = field(default_factory=dict)
+    cost_usd: float | None = None
+    duration_ms: int | None = None
+    attempts: int = 1
+
+
+@lru_cache(maxsize=1)
+def load_chunk_prompt() -> str:
+    return _PROMPT_PATH.read_text(encoding="utf-8")
+
+
+def uuids_by_turn(ct: CleanedTranscript) -> dict[int, list[str]]:
+    return {t.idx: [u for u in t.uuids if u] for t in ct.turns}
+
+
+def _parse_turn_ref(v) -> int:
+    """把 5 / '5' / '回合5' / 'T5' 解析成回合号整数;无法解析抛 ValueError。"""
+    if isinstance(v, int):
+        return v
+    m = _NUM.search(str(v))
+    if not m:
+        raise ValueError(f"无法解析回合号: {v!r}")
+    return int(m.group(1))
+
+
+def _covered_uuids(start: int, end: int, umap: dict[int, list[str]]) -> list[str]:
+    out: list[str] = []
+    for i in range(start, end + 1):
+        out.extend(umap.get(i, []))
+    return out
+
+
+def _normalize_segment(raw: dict, n_turns: int, umap: dict[int, list[str]], *, origin: str) -> dict:
+    if "start" not in raw or "end" not in raw:
+        raise ValueError(f"段缺 start/end: {raw!r}")
+    a = _parse_turn_ref(raw["start"])
+    b = _parse_turn_ref(raw["end"])
+    if a > b:
+        a, b = b, a
+    # 钉进 [1, n_turns],挡越界(不静默丢,夹紧)
+    a = max(1, min(a, n_turns))
+    b = max(1, min(b, n_turns))
+    deletions = raw.get("deletions") or []
+    if not isinstance(deletions, list):
+        raise ValueError(f"deletions 非列表: {deletions!r}")
+    return {
+        "start_turn": a,
+        "end_turn": b,
+        "tag": str(raw.get("tag", "")).strip(),
+        "cut_reason": str(raw.get("cut_reason", "")).strip(),
+        "short": bool(raw.get("short", (b - a + 1) < SHORT_TURNS)),
+        "deletions": [
+            {"range": str(d.get("range", "")), "reason": str(d.get("reason", ""))}
+            for d in deletions if isinstance(d, dict)
+        ],
+        "origin": origin,
+        "covered_uuids": _covered_uuids(a, b, umap),
+    }
+
+
+def _parse_segments(obj: dict, n_turns: int, umap: dict[int, list[str]]) -> list[dict]:
+    segs = obj.get("segments")
+    if not isinstance(segs, list) or not segs:
+        raise ValueError(f"响应无 segments 列表: {str(obj)[:200]}")
+    out = [_normalize_segment(s, n_turns, umap, origin="agent") for s in segs]
+    return sorted(out, key=lambda s: s["start_turn"])
+
+
+def run_chunk(
+    ct: CleanedTranscript,
+    provider: ChatProvider,
+    *,
+    model: str,
+    timeout: int,
+    max_retries: int,
+    max_chars: int = MAX_CHARS,
+) -> ChunkResult:
+    """调 agent 切块。超大抛 OversizedError;屡败抛 ChunkFailed。"""
+    text = render_for_chunk(ct)
+    if len(text) > max_chars:
+        raise OversizedError(len(text), max_chars)
+    n = len(ct.turns)
+    umap = uuids_by_turn(ct)
+    system = load_chunk_prompt()
+    user = f"<conversation>\n{text}\n</conversation>"
+
+    errors: list[str] = []
+    for attempt in range(1, max_retries + 2):
+        try:
+            res = provider.complete(system, user, model=model, timeout=timeout)
+            obj = extract_json(res.text)
+            segments = _parse_segments(obj, n, umap)
+            return ChunkResult(
+                segments=segments, provider=provider.id, model=res.model,
+                usage=res.usage, cost_usd=res.cost_usd,
+                duration_ms=res.duration_ms, attempts=attempt,
+            )
+        except (ChatError, ValueError) as e:
+            errors.append(f"第{attempt}次: {e}")
+    raise ChunkFailed(errors)
+
+
+def manual_segments(
+    ct: CleanedTranscript, boundaries: list[tuple[int, int]]
+) -> list[dict]:
+    """人工指定回合边界 [(start_turn, end_turn), ...] 直接建段(不走 agent)。"""
+    n = len(ct.turns)
+    umap = uuids_by_turn(ct)
+    out: list[dict] = []
+    for start, end in boundaries:
+        if start > end:
+            start, end = end, start
+        start = max(1, min(start, n))
+        end = max(1, min(end, n))
+        out.append({
+            "start_turn": start, "end_turn": end, "tag": "", "cut_reason": "手动切块",
+            "short": (end - start + 1) < SHORT_TURNS, "deletions": [],
+            "origin": "manual", "covered_uuids": _covered_uuids(start, end, umap),
+        })
+    return out
