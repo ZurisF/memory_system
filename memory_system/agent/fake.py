@@ -96,7 +96,7 @@ class FakeChatProvider(ChatProvider):
         elif self._default is not None:
             text = self._default(system, user, model)
         else:
-            text = auto_segment(user)
+            text = auto_extract(user) if "<source_text>" in user or "记忆提取助手" in system else auto_segment(user)
         return ChatResult(
             text=text, model=model or "fake",
             usage={"input_tokens": len(user), "output_tokens": len(text)},

@@ -10,6 +10,7 @@ const SEL = new Set();     // 选中回合 idx(建段 / 标已处理共用)
 // 块 B:子阶段 + 候选区 + 处理锁
 let STAGE = "chunk";       // chunk(切段) | triage(待整理)
 let LOCK = null;           // 处理锁:正在切段的 path;非空时其他条目禁点(防误触)
+let SEG_DIRTY = false;     // 当前切段面板有未保存的本地修改
 let TLIST = [];            // 当前 transcript 列表(渲染用,避免勾选就重新拉网络)
 let HIDDEN_EMPTY = 0;
 const CAND = new Set();    // 候选篮子:勾选的 transcript path
@@ -19,7 +20,7 @@ const TMAP = new Map();    // path -> transcript info(候选/待整理显示 sid
 // 块 C:待整理(蒸馏)三栏 —— 左 session 列表 / 中 条目编辑 / 右 选项
 let TRIS = [];             // /api/staging/all 的 sessions(扫磁盘,与候选区无关)
 let TRI_CUR = null;        // 当前选中 session_id
-const SELT = new Set();    // 待整理选中项 key(path,kind,id) kind∈seg|ep
+const SELT = new Set();    // 待整理选中项 key(session_id,kind,id) kind∈seg|ep
 const UNDO = {};           // 每条 episode 的本地撤销栈:{epKey:[fieldsSnapshot,...]}
 
 const PALETTE = ["#7aa2f7", "#9ece6a", "#e0af68", "#bb9af7", "#f7768e",
@@ -53,7 +54,13 @@ function toast(msg, bad) {
   setTimeout(() => el.classList.remove("show"), 2200);
 }
 function esc(s) {
-  return (s || "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  return String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+function escAttr(s) {
+  return esc(s).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function clone(v) {
+  return JSON.parse(JSON.stringify(v ?? null));
 }
 function fmtSize(n) { return n < 1024 ? n + "B" : (n / 1024 | 0) + "KB"; }
 function fmtTime(mtime) {
@@ -135,6 +142,10 @@ function renderBasket() {
 // 打开一条(切段屏)。点击=预览,不上锁、不标记;真正动手编辑时才由 beginEdit 上锁。
 function openForChunk(path, el) {
   if (LOCK && path !== LOCK) { toast("有正在编辑的条目,请先「确认分段」或「退出处理」", true); return; }
+  if (SEG_DIRTY && CUR && CUR.path !== path &&
+      !window.confirm("当前分段还没保存,切换会丢失本地修改。确认丢弃并打开另一条?")) {
+    return;
+  }
   setStage("chunk");
   loadTranscript(path, el);
 }
@@ -149,10 +160,15 @@ function beginEdit() {
 // 标脏:上锁。所有就地编辑动作统一走这里。存盘由「确认分段→待整理」一键完成。
 function markDirty() {
   beginEdit();
+  SEG_DIRTY = true;
 }
 
 // 子阶段切换(视图冻结:只显隐,不销毁各自状态)
 function setStage(stage) {
+  if (stage === "triage" && SEG_DIRTY) {
+    toast("当前分段还没保存,请先「确认分段→待整理」或「退出处理」", true);
+    return;
+  }
   STAGE = stage;
   saveState();
   $("#screen-chunk").style.display = stage === "chunk" ? "flex" : "none";
@@ -164,7 +180,8 @@ function setStage(stage) {
 
 // ====== 块 C:待整理树 + 五件套编辑器 + 批量归档 ======
 
-const tkey = (path, kind, id) => path + "\u0000" + kind + "\u0000" + id;
+const tkey = (sessionId, kind, id) => sessionId + "\u0000" + kind + "\u0000" + id;
+function triBySession(sessionId) { return TRIS.find((s) => s.session_id === sessionId) || null; }
 
 // ---- 待整理(蒸馏)三栏:扫磁盘 /api/staging/all 列会话,点 session 开其条目 ----
 function fmtIso(s) {
@@ -193,8 +210,8 @@ async function loadTriageAll() {
   // 清掉已不存在的选中项
   const live = new Set();
   TRIS.forEach((s) => {
-    unextractedSegs(s).forEach((seg) => live.add(tkey(s.source_path, "seg", seg.seg_id)));
-    (s.episodes || []).forEach((e) => live.add(tkey(s.source_path, "ep", e.stage_id)));
+    unextractedSegs(s).forEach((seg) => live.add(tkey(s.session_id, "seg", seg.seg_id)));
+    (s.episodes || []).forEach((e) => live.add(tkey(s.session_id, "ep", e.stage_id)));
   });
   [...SELT].forEach((k) => { if (!live.has(k)) SELT.delete(k); });
   renderTriSessions();
@@ -251,7 +268,7 @@ function renderTriMain() {
   $("#tri-main-title").textContent =
     `${s.session_id.slice(0, 8)} · ${eps.length} 条目 / ${segs.length} 段待提取`;
   box.innerHTML = "";
-  const r = { path: s.source_path };
+  const r = { session_id: s.session_id, path: s.source_path, source_exists: s.source_exists };
   segs.forEach((seg) => box.appendChild(triSegCard(r, seg)));
   eps.forEach((e) => box.appendChild(triEpCard(r, e)));
   retry.forEach((rt) => box.appendChild(triRetryCard(r, rt)));
@@ -263,7 +280,7 @@ function renderTriMain() {
 
 // 未提取的段:小卡 + 提取按钮 + 勾选
 function triSegCard(r, s) {
-  const k = tkey(r.path, "seg", s.seg_id);
+  const k = tkey(r.session_id, "seg", s.seg_id);
   const card = document.createElement("div");
   card.className = "tri-seg-card";
   card.innerHTML =
@@ -272,6 +289,8 @@ function triSegCard(r, s) {
     `<i>[${esc(s.origin || "")}] 未提取</i></span>`;
   const btn = document.createElement("button");
   btn.className = "seg-extract"; btn.textContent = "提取总结";
+  btn.disabled = !r.source_exists;
+  if (!r.source_exists) btn.title = "源 jsonl 已清,不能再提取新段";
   btn.onclick = () => extractPaths({ [r.path]: [s.seg_id] });
   card.appendChild(btn);
   card.querySelector(".r-cb").onclick = (ev) => { toggleSel(k, ev.target.checked); };
@@ -280,7 +299,7 @@ function triSegCard(r, s) {
 
 // 已提取条目:勾选头 + 五件套编辑器(复用 epEditor)
 function triEpCard(r, e) {
-  const k = tkey(r.path, "ep", e.stage_id);
+  const k = tkey(r.session_id, "ep", e.stage_id);
   const card = document.createElement("div");
   card.className = "tri-ep-card";
   const tier = e.salience_tier || 1;
@@ -303,6 +322,8 @@ function triRetryCard(r, rt) {
     `${esc((rt.errors && rt.errors[rt.errors.length - 1]) || "")}</span>`;
   const btn = document.createElement("button");
   btn.className = "seg-extract"; btn.textContent = "重试提取";
+  btn.disabled = !r.source_exists;
+  if (!r.source_exists) btn.title = "源 jsonl 已清,不能再重试提取";
   btn.onclick = () => extractPaths({ [r.path]: [rt.seg_id] });
   card.appendChild(btn);
   return card;
@@ -315,8 +336,18 @@ function toggleSel(k, on) {
 
 function updateTriageBar() {
   let segN = 0, epN = 0;
-  SELT.forEach((k) => (k.split("\u0000")[1] === "seg" ? segN++ : epN++));
-  $("#t-extract").disabled = segN === 0;
+  let extractable = 0;
+  SELT.forEach((k) => {
+    const [sessionId, kind] = k.split("\u0000");
+    if (kind === "seg") {
+      segN++;
+      const s = triBySession(sessionId);
+      if (s && s.source_exists && s.source_path) extractable++;
+    } else {
+      epN++;
+    }
+  });
+  $("#t-extract").disabled = extractable === 0;
   $("#t-confirm").disabled = epN === 0;
   $("#t-reject").disabled = epN === 0;
   $("#t-selinfo").textContent = SELT.size ? `已选 ${segN} 段 / ${epN} 条目` : "未选";
@@ -324,17 +355,18 @@ function updateTriageBar() {
 
 // ---- 五件套就地编辑器 ----
 function epEditor(r, e) {
-  const k = tkey(r.path, "ep", e.stage_id);
+  const k = tkey(r.session_id, "ep", e.stage_id);
   const box = document.createElement("div");
   box.className = "ep-editor";
   const dels = (e.deletions || []).map((d) => `${esc(d.range)} · ${esc(d.reason || "")}`).join("<br>");
+  const nodeJson = JSON.stringify(e.nodes || [], null, 2);
   box.innerHTML =
     `<div class="lbl">overview(检索向量来源)</div><textarea class="ed-ov">${esc(e.overview || "")}</textarea>` +
     `<div class="lbl">summary</div><textarea class="ed-sum">${esc(e.summary || "")}</textarea>` +
     `<div class="row"><div style="flex:1"><div class="lbl">salience_tier</div>` +
     `<select class="ed-tier"><option value="1">1 低</option><option value="2">2 中</option><option value="3">3 高</option></select></div>` +
-    `<div style="flex:2"><div class="lbl">salience_reason</div><input type="text" class="ed-sr" value="${esc(e.salience_reason || "")}"></div></div>` +
-    `<div class="lbl">nodes(概念,逗号分隔 label)</div><input type="text" class="ed-nodes" value="${esc((e.nodes || []).map((n) => n.label).join(", "))}">` +
+    `<div style="flex:2"><div class="lbl">salience_reason</div><input type="text" class="ed-sr" value="${escAttr(e.salience_reason || "")}"></div></div>` +
+    `<div class="lbl">nodes(JSON;保留 action/new_alias)</div><textarea class="ed-nodes">${esc(nodeJson)}</textarea>` +
     `<div class="lbl">highlights(${(e.highlights || []).length})</div><div class="hl-chips"></div>` +
     `<div class="lbl">source_text(去噪:手动删噪声;选中下方预览可加高光)</div>` +
     (dels ? `<div class="del-hint">建议删除:<br>${dels}</div>` : "") +
@@ -390,22 +422,34 @@ function epEditor(r, e) {
   };
 
   // 收集编辑器当前字段(白名单 _EDITABLE)
-  const collect = () => ({
-    overview: box.querySelector(".ed-ov").value,
-    summary: box.querySelector(".ed-sum").value,
-    salience_tier: parseInt(box.querySelector(".ed-tier").value, 10) || 1,
-    salience_reason: box.querySelector(".ed-sr").value,
-    nodes: box.querySelector(".ed-nodes").value.split(",").map((x) => x.trim()).filter(Boolean)
-      .map((label) => ({ label, action: "match_existing" })),
-    source_text: box.querySelector(".ed-src").value,
-    highlights: e.highlights || [],
-    deletions: e.deletions || [],
-  });
+  const collect = () => {
+    let nodes;
+    try {
+      nodes = JSON.parse(box.querySelector(".ed-nodes").value || "[]");
+      if (!Array.isArray(nodes)) throw new Error("nodes 必须是数组");
+    } catch (err) {
+      toast("nodes JSON 无效: " + err.message, true);
+      return null;
+    }
+    return {
+      overview: box.querySelector(".ed-ov").value,
+      summary: box.querySelector(".ed-sum").value,
+      salience_tier: parseInt(box.querySelector(".ed-tier").value, 10) || 1,
+      salience_reason: box.querySelector(".ed-sr").value,
+      nodes,
+      source_text: box.querySelector(".ed-src").value,
+      highlights: e.highlights || [],
+      deletions: e.deletions || [],
+    };
+  };
 
-  box.querySelector(".ed-save").onclick = () => saveEpEdit(r, e, k, collect());
+  box.querySelector(".ed-save").onclick = () => {
+    const fields = collect();
+    if (fields) saveEpEdit(r, e, k, fields);
+  };
   box.querySelector(".ed-undo").onclick = () => undoEpEdit(r, e, k);
-  box.querySelector(".ed-confirm").onclick = () => confirmEps([{ path: r.path, stage_id: e.stage_id }]);
-  box.querySelector(".ed-reject").onclick = () => rejectEps([{ path: r.path, stage_id: e.stage_id }]);
+  box.querySelector(".ed-confirm").onclick = () => confirmEps([{ session_id: r.session_id, stage_id: e.stage_id }]);
+  box.querySelector(".ed-reject").onclick = () => rejectEps([{ session_id: r.session_id, stage_id: e.stage_id }]);
 
   // ctrl-z 绑定(编辑器内)
   box.addEventListener("keydown", (ev) => {
@@ -431,9 +475,9 @@ async function saveEpEdit(r, e, k, fields) {
   // 入栈当前快照供撤销(只存可编辑字段)
   (UNDO[k] = UNDO[k] || []).push(snapshotFields(e));
   if (UNDO[k].length > 20) UNDO[k].shift();
-  const d = await postJSON("/api/staging/edit", { path: r.path, stage_id: e.stage_id, fields });
+  const d = await postJSON("/api/staging/edit", { session_id: r.session_id, stage_id: e.stage_id, fields });
   if (!d || d.error) { toast("保存失败: " + ((d && d.error) || "网络"), true); return; }
-  patchEpisode(r.path, d);
+  patchLocalEpisode(r, e, d);
   toast("已保存编辑");
 }
 
@@ -441,9 +485,9 @@ function undoEpEdit(r, e, k) {
   const stack = UNDO[k];
   if (!stack || !stack.length) { toast("无可撤销", true); return; }
   const prev = stack.pop();
-  postJSON("/api/staging/edit", { path: r.path, stage_id: e.stage_id, fields: prev }).then((d) => {
+  postJSON("/api/staging/edit", { session_id: r.session_id, stage_id: e.stage_id, fields: prev }).then((d) => {
     if (!d || d.error) { toast("撤销失败", true); return; }
-    patchEpisode(r.path, d);
+    patchLocalEpisode(r, e, d);
     renderTriMain();   // 撤销要让中栏编辑器显示回退后的值
     toast("已撤销");
   });
@@ -452,16 +496,22 @@ function undoEpEdit(r, e, k) {
 function snapshotFields(e) {
   return {
     overview: e.overview, summary: e.summary, salience_tier: e.salience_tier,
-    salience_reason: e.salience_reason, nodes: e.nodes, source_text: e.source_text,
-    highlights: e.highlights, deletions: e.deletions,
+    salience_reason: e.salience_reason, nodes: clone(e.nodes), source_text: e.source_text,
+    highlights: clone(e.highlights), deletions: clone(e.deletions),
   };
 }
 
 // 用 staging/edit 等回的最新 staging 更新内存会话,并只刷左栏计数(不重渲染中栏,免打断编辑)
-function patchEpisode(path, d) {
-  const s = TRIS.find((x) => x.source_path === path);
+function patchEpisode(sessionId, d) {
+  const s = triBySession(sessionId);
   if (s && d.episodes) { s.episodes = d.episodes; s.retry = d.retry || []; }
   renderTriSessions();
+}
+function patchLocalEpisode(r, e, d) {
+  patchEpisode(r.session_id, d);
+  const s = triBySession(r.session_id);
+  const fresh = s && (s.episodes || []).find((x) => x.stage_id === e.stage_id);
+  if (fresh) Object.assign(e, clone(fresh));
 }
 
 // ---- 提取(可批量) ----
@@ -484,9 +534,11 @@ async function extractPaths(byPath) {
 function doExtractSel() {
   const byPath = {};
   SELT.forEach((k) => {
-    const [path, kind, id] = k.split("\u0000");
+    const [sessionId, kind, id] = k.split("\u0000");
     if (kind !== "seg") return;
-    (byPath[path] = byPath[path] || []).push(id);
+    const s = triBySession(sessionId);
+    if (!s || !s.source_exists || !s.source_path) return;
+    (byPath[s.source_path] = byPath[s.source_path] || []).push(id);
   });
   if (!Object.keys(byPath).length) { toast("先勾选未提取的段", true); return; }
   extractPaths(byPath);
@@ -498,7 +550,7 @@ async function confirmEps(items) {
   if (!window.confirm(`确认把 ${items.length} 条写入记忆正本 + DB?\n此操作不可逆(只能事后 archive)。`)) return;
   let okN = 0;
   for (const it of items) {
-    const d = await postJSON("/api/confirm", { path: it.path, stage_id: it.stage_id });
+    const d = await postJSON("/api/confirm", { session_id: it.session_id, stage_id: it.stage_id });
     if (!d || d.error) {
       toast(`确认失败(${it.stage_id}): ${(d && d.error) || "网络"},已停止`, true);
       break;
@@ -512,8 +564,8 @@ async function confirmEps(items) {
 function doConfirmSel() {
   const items = [];
   SELT.forEach((k) => {
-    const [path, kind, id] = k.split("\u0000");
-    if (kind === "ep") items.push({ path, stage_id: id });
+    const [sessionId, kind, id] = k.split("\u0000");
+    if (kind === "ep") items.push({ session_id: sessionId, stage_id: id });
   });
   confirmEps(items);
 }
@@ -525,7 +577,7 @@ async function rejectEps(items) {
   if (reason === null) return;
   let okN = 0;
   for (const it of items) {
-    const d = await postJSON("/api/reject", { path: it.path, stage_id: it.stage_id, reason });
+    const d = await postJSON("/api/reject", { session_id: it.session_id, stage_id: it.stage_id, reason });
     if (!d || d.error) { toast(`拒绝失败(${it.stage_id})`, true); break; }
     okN++;
   }
@@ -535,8 +587,8 @@ async function rejectEps(items) {
 function doRejectSel() {
   const items = [];
   SELT.forEach((k) => {
-    const [path, kind, id] = k.split("\u0000");
-    if (kind === "ep") items.push({ path, stage_id: id });
+    const [sessionId, kind, id] = k.split("\u0000");
+    if (kind === "ep") items.push({ session_id: sessionId, stage_id: id });
   });
   rejectEps(items);
 }
@@ -900,6 +952,7 @@ async function saveSegs() {
   EDITED.add(CUR.path);
   CAND.add(CUR.path);
   saveState();
+  SEG_DIRTY = false;
   LOCK = null;
   $("#exit-proc").style.display = "none";
   renderListItems();
@@ -934,6 +987,8 @@ $("#confirm-segs").onclick = async () => {
   }
 };
 $("#exit-proc").onclick = () => {
+  if (SEG_DIRTY && !window.confirm("当前分段还没保存,退出会丢失本地修改。确认退出?")) return;
+  SEG_DIRTY = false;
   LOCK = null;
   $("#exit-proc").style.display = "none";
   renderListItems();

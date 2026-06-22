@@ -11,6 +11,9 @@ API:
   POST /api/chunk    {path, provider?, model?}      调切块 agent,落工作文件
   POST /api/segments {path, segments}               存人工编辑后的段(uuid 服务端重算)
   POST /api/extract  {path, seg_ids?, provider?, model?}  逐段提取五件套,落 staging(按块回滚)
+  POST /api/confirm  {path|session_id, stage_id}    确认 staging 条目入库
+  POST /api/reject   {path|session_id, stage_id, reason?}  拒绝 staging 条目
+  POST /api/staging/edit {path|session_id, stage_id, fields}  编辑 staging 条目
 """
 
 from __future__ import annotations
@@ -81,6 +84,12 @@ def _ui_doc(doc: dict | None) -> dict:
 
 
 def make_handler(cfg: Config):
+    def _valid_session_id(raw: object) -> str | None:
+        sid = str(raw or "").strip()
+        if not sid or "/" in sid or "\\" in sid or ".." in sid:
+            return None
+        return sid
+
     def _confine(raw: str) -> Path | None:
         """把传入 path 限制在 transcripts_root 内;越界/无效返回 None(堵任意文件读)。"""
         if not raw:
@@ -142,6 +151,10 @@ def make_handler(cfg: Config):
         def _api_get_staging(self, q) -> None:
             from memory_system import staging_store
 
+            sid = _valid_session_id((q.get("session_id") or [""])[0])
+            if sid:
+                doc = staging_store.load(cfg.staging_episodes_dir, sid)
+                return self._json(_ui_staging(doc))
             path = _confine((q.get("path") or [""])[0])
             if path is None or not path.exists():
                 return self._json({"error": "路径越界或文件不存在"}, 404)
@@ -276,63 +289,66 @@ def make_handler(cfg: Config):
             return handler(body)
 
         # ---- S5 审核/归档 ----
-        def _staging_for(self, body):
-            """取 (ct, staging doc 重载函数);path 越界返回 (None, error 响应已发)。"""
+        def _session_for_staging(self, body) -> str | None:
+            """审核接口优先用 session_id;兼容旧前端传 path 的形状。"""
+            sid = _valid_session_id(body.get("session_id"))
+            if sid:
+                return sid
             path = _confine(body.get("path", ""))
             if path is None or not path.exists():
-                self._json({"error": "路径越界或文件不存在"}, 404)
+                self._json({"error": "缺 session_id,且 path 越界或文件不存在"}, 404)
                 return None
-            return preview_cache.get(cfg.preview_cache_dir, path)
+            return preview_cache.get(cfg.preview_cache_dir, path).session_id
 
         def _api_confirm(self, body) -> None:
             from memory_system import archive, staging_store
             from memory_system.embedding import get_provider
 
-            ct = self._staging_for(body)
-            if ct is None:
+            session_id = self._session_for_staging(body)
+            if session_id is None:
                 return
             stage_id = body.get("stage_id")
             if not stage_id:
                 return self._json({"error": "缺 stage_id"}, 400)
             try:
                 provider = get_provider(cfg.embedding)
-                pid = archive.confirm_episode(cfg, ct.session_id, stage_id, provider)
+                pid = archive.confirm_episode(cfg, session_id, stage_id, provider)
             except archive.ArchiveError as e:
                 return self._json({"error": str(e)}, 400)
-            doc = staging_store.load(cfg.staging_episodes_dir, ct.session_id)
+            doc = staging_store.load(cfg.staging_episodes_dir, session_id)
             self._json({"ok": True, "public_id": pid, **_ui_staging(doc)})
 
         def _api_reject(self, body) -> None:
             from memory_system import archive, staging_store
 
-            ct = self._staging_for(body)
-            if ct is None:
+            session_id = self._session_for_staging(body)
+            if session_id is None:
                 return
             stage_id = body.get("stage_id")
             if not stage_id:
                 return self._json({"error": "缺 stage_id"}, 400)
             try:
-                archive.reject_episode(cfg, ct.session_id, stage_id, body.get("reason"))
+                archive.reject_episode(cfg, session_id, stage_id, body.get("reason"))
             except archive.ArchiveError as e:
                 return self._json({"error": str(e)}, 400)
-            doc = staging_store.load(cfg.staging_episodes_dir, ct.session_id)
+            doc = staging_store.load(cfg.staging_episodes_dir, session_id)
             self._json({"ok": True, **_ui_staging(doc)})
 
         def _api_staging_edit(self, body) -> None:
             from memory_system import staging_store
 
-            ct = self._staging_for(body)
-            if ct is None:
+            session_id = self._session_for_staging(body)
+            if session_id is None:
                 return
             stage_id = body.get("stage_id")
             fields = body.get("fields")
             if not stage_id or not isinstance(fields, dict):
                 return self._json({"error": "缺 stage_id 或 fields"}, 400)
             try:
-                staging_store.edit_episode(cfg.staging_episodes_dir, ct.session_id, stage_id, fields)
+                staging_store.edit_episode(cfg.staging_episodes_dir, session_id, stage_id, fields)
             except KeyError as e:
                 return self._json({"error": str(e)}, 404)
-            doc = staging_store.load(cfg.staging_episodes_dir, ct.session_id)
+            doc = staging_store.load(cfg.staging_episodes_dir, session_id)
             self._json({"ok": True, **_ui_staging(doc)})
 
         def _api_archive(self, body) -> None:
