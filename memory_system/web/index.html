@@ -10,7 +10,8 @@
           --err:#f7768e; --done:#565a63; --sel:#2d3f5e; }
   * { box-sizing:border-box; }
   body { margin:0; font:14px/1.6 -apple-system,system-ui,"PingFang SC",sans-serif;
-         background:var(--bg); color:var(--fg); height:100vh; display:flex; }
+         background:var(--bg); color:var(--fg); height:100vh;
+         display:flex; flex-direction:column; }
   #list { width:260px; flex:none; border-right:1px solid var(--line);
           overflow-y:auto; background:var(--panel); }
   #list h2, #main h2, #seg h2 { font-size:12px; text-transform:uppercase; letter-spacing:.5px;
@@ -33,10 +34,15 @@
   .turn.sel { outline:2px solid var(--me); background:var(--sel); }
   .turn.done { border-top-style:dashed; }
   .turn.del { opacity:.45; text-decoration:line-through; }
-  .turn .who { font-weight:600; }
+  .turn .who { font-weight:600; font-size:12px; display:block; margin-bottom:2px; }
   .turn .me { color:var(--me); }
   .turn .claude { color:var(--claude); }
   .turn .txt { white-space:pre-wrap; margin:2px 0 8px; }
+  /* 对话框气泡:我=左蓝,Claude=右绿 */
+  .turn .bubble { white-space:pre-wrap; border-radius:9px; padding:6px 10px; margin:4px 0;
+          max-width:90%; }
+  .turn .bubble.me { background:#1b263f; border:1px solid #2d3f5e; }
+  .turn .bubble.claude { background:#1c2818; border:1px solid #2e3f26; margin-left:auto; }
   .turn .tmeta { color:var(--muted); font-size:12px; }
   .turn .seg-chip { font-size:11px; color:var(--muted); margin-left:8px; }
   .turn .done-tag { color:var(--done); font-size:11px; position:absolute; top:8px; right:10px; }
@@ -84,10 +90,185 @@
          transition:opacity .3s; z-index:9; max-width:50vw; }
   #toast.show { opacity:1; }
   #toast.bad { background:var(--err); color:#fff; }
+
+  /* ---- 子阶段切换条 ---- */
+  #substage { flex:none; display:flex; gap:8px; align-items:center; padding:8px 14px;
+         background:var(--panel); border-bottom:1px solid var(--line); }
+  #substage button { background:#2a2d33; color:var(--fg); border:1px solid var(--line);
+         border-radius:6px; padding:6px 14px; font-size:13px; cursor:pointer; }
+  #substage button.active { background:var(--me); color:#10131a; border:0; font-weight:600; }
+  #cand-info { color:var(--muted); font-size:12px; margin-left:auto; }
+
+  /* ---- 切段屏(原三栏)+ 待整理屏(同样三栏:会话列表 | 编辑 | 选项)---- */
+  #screen-chunk { flex:1; display:flex; min-height:0; }
+  #screen-triage { flex:1; min-height:0; }   /* display 由 setStage 设 flex */
+  /* 左:会话列表(仿切段 jsonl 列表风格)*/
+  #tri-list { width:260px; flex:none; border-right:1px solid var(--line);
+         overflow-y:auto; background:var(--panel); }
+  #tri-list h2 { font-size:12px; text-transform:uppercase; letter-spacing:.5px;
+         color:var(--muted); padding:12px 14px 6px; margin:0; position:sticky; top:0;
+         background:var(--panel); z-index:2; }
+  /* 中:选中会话的条目编辑区 */
+  #tri-main { flex:1; overflow-y:auto; padding-bottom:24px; min-width:0; }
+  #tri-main h2 { font-size:12px; text-transform:uppercase; letter-spacing:.5px;
+         color:var(--muted); padding:12px 14px 6px; margin:0; background:var(--bg); }
+  #triage-hint { color:var(--muted); padding:14px; }
+  /* 右:选项面板(仿切段右栏)*/
+  #tri-ops { width:300px; flex:none; border-left:1px solid var(--line);
+         overflow-y:auto; background:var(--panel); }
+  #tri-ops .pad { padding:10px 14px; }
+  #tri-ops .lbl { font-size:11px; color:var(--muted); margin:10px 0 3px;
+         text-transform:uppercase; letter-spacing:.5px; }
+  #tri-ops select, #tri-ops input[type=text] {
+         background:var(--bg); color:var(--fg); border:1px solid var(--line);
+         border-radius:5px; padding:5px 7px; font:13px/1.4 inherit; width:100%; }
+  #tri-ops button { background:#2a2d33; color:var(--fg); border:1px solid var(--line);
+         border-radius:6px; padding:7px 12px; font-size:13px; cursor:pointer; width:100%;
+         margin-top:8px; }
+  #tri-ops button:hover { border-color:var(--me); }
+  #tri-ops button.primary { background:var(--me); color:#10131a; border:0; font-weight:600; }
+  #tri-ops button.danger { border-color:var(--err); color:var(--err); }
+  #tri-ops button:disabled { opacity:.5; cursor:default; }
+  #tri-ops .ops-info { color:var(--muted); font-size:12px; margin-top:8px; }
+  /* 会话列表条目(仿 .t-item)*/
+  .s-item { padding:8px 14px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .s-item:hover { background:#2a2d33; }
+  .s-item.active { background:var(--sel); }
+  .s-item .sid { font-family:ui-monospace,monospace; color:var(--me); }
+  .s-item .meta { color:var(--muted); font-size:12px; }
+  .s-item .cwd { color:var(--muted); font-size:12px; overflow:hidden;
+         text-overflow:ellipsis; white-space:nowrap; }
+  .s-item.gone { opacity:.6; }
+  .s-badge { display:inline-block; font-size:11px; padding:0 6px; border-radius:8px;
+         margin-left:6px; background:#2a2d33; color:var(--muted); }
+  .s-badge.staged { background:var(--claude); color:#10131a; }
+  .s-badge.cand { background:var(--me); color:#10131a; }
+
+  /* ---- 候选篮子 + 列表 checkbox + 处理锁 ---- */
+  #cand-basket { border-bottom:1px solid var(--line); }
+  #cand-basket .cb-h { font-size:11px; color:var(--muted); padding:8px 14px 2px;
+         text-transform:uppercase; letter-spacing:.5px; }
+  #cand-basket .cb-item { padding:5px 14px; font-size:12px; cursor:pointer;
+         display:flex; gap:6px; align-items:center; }
+  #cand-basket .cb-item:hover { background:#2a2d33; }
+  #cand-basket .cb-item.cur { background:var(--sel); }
+  #cand-basket .cb-sid { font-family:ui-monospace,monospace; color:var(--me); }
+  .t-item { display:flex; gap:8px; align-items:flex-start; }
+  .t-item .cb { margin-top:2px; flex:none; }
+  .t-item .body { flex:1; min-width:0; }
+  .t-item.locked { opacity:.38; pointer-events:none; }
+  .t-item.cur { background:var(--sel); }
+  .flag { font-size:10px; padding:0 5px; border-radius:7px; background:#2a2d33;
+         color:var(--warn); margin-left:6px; }
+
+  /* ---- 待整理卡片 ---- */
+  .tri-card { border:1px solid var(--line); border-radius:8px; margin:10px 14px;
+         padding:10px 12px; background:var(--panel); }
+  .tri-card .hd { display:flex; gap:8px; align-items:center; margin-bottom:6px; }
+  .tri-card .hd .sid { font-family:ui-monospace,monospace; color:var(--me); font-weight:600; }
+  .tri-card .hd .cwd { color:var(--muted); font-size:12px; }
+  .tri-seg { font-size:12px; color:var(--fg); margin:3px 0; padding-left:6px;
+         border-left:3px solid var(--line); }
+  .tri-badge { font-size:11px; padding:0 6px; border-radius:8px; margin-left:auto; }
+  .tri-badge.staged { background:var(--claude); color:#10131a; }
+  .tri-badge.retry { background:var(--err); color:#fff; }
+  .tri-badge.none { background:#2a2d33; color:var(--muted); }
+  .tri-card .acts { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .tri-card .acts button { background:#2a2d33; color:var(--fg); border:1px solid var(--line);
+         border-radius:5px; padding:5px 10px; font-size:13px; cursor:pointer; }
+  .tri-card .acts button:hover { border-color:var(--me); }
+  .tri-card .acts button.primary { background:var(--me); color:#10131a; border:0; font-weight:600; }
+  .tri-card .acts button:disabled { opacity:.5; cursor:default; }
+
+  /* ---- 待整理批量工具条 ---- */
+  #triage-bar { display:flex; gap:8px; align-items:center; padding:8px 14px;
+         border-bottom:1px solid var(--line); background:var(--panel);
+         position:sticky; top:0; z-index:3; }
+  #triage-bar button { background:#2a2d33; color:var(--fg); border:1px solid var(--line);
+         border-radius:6px; padding:6px 12px; font-size:13px; cursor:pointer; }
+  #triage-bar button:hover { border-color:var(--me); }
+  #triage-bar button.primary { background:var(--me); color:#10131a; border:0; font-weight:600; }
+  #triage-bar button:disabled { opacity:.5; cursor:default; }
+  #t-selinfo { color:var(--muted); font-size:12px; }
+  #t-refresh { margin-left:auto; }
+
+  /* ---- 待整理树:文件夹(jsonl) / 文件(段·条目) ---- */
+  .tri-folder { border:1px solid var(--line); border-radius:8px; margin:10px 14px;
+         background:var(--panel); overflow:hidden; }
+  .tri-fhd { display:flex; gap:8px; align-items:center; padding:9px 12px;
+         border-bottom:1px solid var(--line); cursor:pointer; }
+  .tri-fhd .sid { font-family:ui-monospace,monospace; color:var(--me); font-weight:600; }
+  .tri-fhd .cwd { color:var(--muted); font-size:12px; overflow:hidden;
+         text-overflow:ellipsis; white-space:nowrap; max-width:40%; }
+  .tri-fhd .caret { color:var(--muted); width:12px; }
+  .tri-row { display:flex; gap:8px; align-items:flex-start; padding:7px 12px 7px 26px;
+         border-bottom:1px solid var(--line); }
+  .tri-row:last-child { border-bottom:0; }
+  .tri-row .rbody { flex:1; min-width:0; }
+  .tri-row .rmeta { color:var(--muted); font-size:12px; }
+  .tri-row.ep .ov { white-space:pre-wrap; }
+  .tri-row .expand { cursor:pointer; color:var(--muted); font-size:12px;
+         border:1px solid var(--line); border-radius:5px; padding:1px 7px; background:#2a2d33; }
+  .tier { font-size:10px; padding:0 6px; border-radius:7px; margin-left:6px; }
+  .tier.t1 { background:#2a2d33; color:var(--muted); }
+  .tier.t2 { background:var(--warn); color:#10131a; }
+  .tier.t3 { background:var(--err); color:#fff; }
+  .rretry { color:var(--err); }
+
+  /* ---- 待整理中栏:段卡 / 条目卡 ---- */
+  .tri-seg-card { display:flex; align-items:center; gap:8px; margin:8px 14px;
+         padding:8px 10px; border:1px solid var(--line); border-radius:7px; background:var(--panel); }
+  .tri-seg-card .seg-meta { flex:1; min-width:0; }
+  .tri-seg-card .seg-meta i { color:var(--muted); font-style:normal; font-size:12px; }
+  .tri-seg-card .seg-extract { background:#2a2d33; color:var(--fg); border:1px solid var(--line);
+         border-radius:5px; padding:5px 10px; font-size:13px; cursor:pointer; flex:none; }
+  .tri-seg-card .seg-extract:hover { border-color:var(--me); }
+  .tri-ep-card { margin:10px 14px; border:1px solid var(--line); border-radius:8px;
+         overflow:hidden; background:var(--panel); }
+  .tri-ep-head { display:flex; align-items:center; gap:8px; padding:8px 12px;
+         border-bottom:1px solid var(--line); font-size:13px; color:var(--muted); }
+  .tri-ep-head b { color:var(--fg); }
+  .tri-ep-card .ep-editor { padding:10px 12px 12px; border-bottom:0; background:transparent; }
+
+  /* ---- 五件套就地编辑器 ---- */
+  .ep-editor { padding:10px 12px 12px 26px; border-bottom:1px solid var(--line);
+         background:#1e2024; }
+  .ep-editor .lbl { font-size:11px; color:var(--muted); margin:8px 0 2px;
+         text-transform:uppercase; letter-spacing:.5px; }
+  .ep-editor input[type=text], .ep-editor textarea, .ep-editor select {
+         background:var(--bg); color:var(--fg); border:1px solid var(--line);
+         border-radius:5px; padding:5px 7px; font:13px/1.5 inherit; width:100%; }
+  .ep-editor textarea { resize:vertical; }
+  .ep-editor .src { min-height:120px; font:12px/1.6 ui-monospace,monospace; }
+  .ep-editor .row { display:flex; gap:8px; align-items:center; margin:4px 0; flex-wrap:wrap; }
+  .ep-editor .hint { color:var(--muted); font-size:12px; }
+  .ep-editor .del-hint { color:var(--warn); font-size:12px; margin:2px 0; }
+  .hl-prev { white-space:pre-wrap; border:1px dashed var(--line); border-radius:6px;
+         padding:8px 10px; font:12px/1.6 ui-monospace,monospace; max-height:220px;
+         overflow:auto; background:var(--bg); }
+  .hl-prev mark { background:var(--warn); color:#10131a; border-radius:3px; padding:0 1px; }
+  .chip { display:inline-flex; align-items:center; gap:4px; font-size:12px;
+         background:#2a2d33; border:1px solid var(--line); border-radius:12px;
+         padding:1px 4px 1px 9px; margin:3px 4px 0 0; }
+  .chip button { background:none; border:0; color:var(--muted); cursor:pointer; font-size:13px; }
+  .ep-editor .acts { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .ep-editor .acts button { background:#2a2d33; color:var(--fg); border:1px solid var(--line);
+         border-radius:5px; padding:6px 12px; font-size:13px; cursor:pointer; }
+  .ep-editor .acts button:hover { border-color:var(--me); }
+  .ep-editor .acts button.primary { background:var(--claude); color:#10131a; border:0; font-weight:600; }
+  .ep-editor .acts button.danger { border-color:var(--err); color:var(--err); }
+  .ep-editor .acts button:disabled { opacity:.5; cursor:default; }
 </style>
 </head>
 <body>
-  <div id="list"><h2>Transcript</h2><div id="t-items"></div></div>
+  <div id="substage">
+    <button data-stage="chunk" class="active">切段</button>
+    <button data-stage="triage">待整理区</button>
+    <span id="cand-info">候选 0</span>
+  </div>
+
+  <div id="screen-chunk">
+  <div id="list"><h2>Transcript</h2><div id="cand-basket"></div><div id="t-items"></div></div>
 
   <div id="main">
     <h2 id="main-title">选段 + 切块</h2>
@@ -116,8 +297,37 @@
   <div id="bar">
     <button id="make-seg" disabled>选中回合 → 建段</button>
     <button id="mark" disabled>标记选段为已处理</button>
-    <button class="primary" id="save-segs" disabled>保存所有段</button>
+    <button id="confirm-segs" class="primary" disabled title="存盘并进入待整理区,准备提取总结">确认分段→待整理</button>
+    <button id="exit-proc" style="display:none">退出处理</button>
     <span class="info" id="sel-info">未选</span>
+  </div>
+  </div><!-- /screen-chunk -->
+
+  <div id="screen-triage" style="display:none">
+    <!-- 左:在处理的会话(扫磁盘 staging/,与候选区无关,不丢)-->
+    <div id="tri-list"><h2>待整理 · 会话</h2><div id="tri-sessions"></div></div>
+
+    <!-- 中:选中会话的条目(段→提取;episode→五件套就地编辑/去噪/归档)-->
+    <div id="tri-main">
+      <h2 id="tri-main-title">蒸馏 / 审核</h2>
+      <div id="triage-hint">← 左侧选一个会话;段可提取总结,已提取的条目可就地编辑五件套 → 去噪 → 归档。</div>
+      <div id="tri-eps"></div>
+    </div>
+
+    <!-- 右:选项面板(提取 provider / 批量归档 / 刷新)-->
+    <div id="tri-ops">
+      <div class="pad">
+        <div class="lbl">提取 agent(总结五件套)</div>
+        <select id="tri-provider" title="提取 agent 后端"></select>
+        <input type="text" id="tri-model" placeholder="模型(空=默认 opus)" style="margin-top:6px">
+        <button id="t-extract" disabled title="对选中的未提取段跑提取">提取选中段</button>
+        <div class="lbl">批量归档(勾选条目)</div>
+        <button id="t-confirm" class="primary" disabled title="把选中条目写入正本+DB,不可逆">确认选中入库</button>
+        <button id="t-reject" class="danger" disabled>拒绝选中</button>
+        <div class="ops-info" id="t-selinfo">未选</div>
+        <button id="t-refresh" title="重扫磁盘 staging/">刷新列表</button>
+      </div>
+    </div>
   </div>
 
   <div id="toast"></div>

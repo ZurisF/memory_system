@@ -8,7 +8,11 @@
 - 项目没有完全失控:S1-S5 验证脚本在项目 `.venv` 下全绿(verify_s3 增门 7、verify_s5 增门 H)。
 - **两个 P1 已修(2026-06-21)**:① confirm 失败残留 node 碎片 → 已改成 DB commit 成功后才原子落盘;
   ② agent 切块坏边界静默夹紧 → 已改成越界/逆序/非整数抛错走重试。详见下方两节(保留复现上下文,标 ✅ 已修)。
-- 下一步是岔路口,zuris 已拍板:**S5 第二段富审核 GUI**(web/ 这次未碰,引擎/API/CLI 已就绪)。
+- 下一步:**S5 第二段富审核 GUI**(web/ 未碰,引擎/API/CLI 已就绪)。**完整前端施工书已写好:
+  `~/Workspace/project/frontend_plan.md`**——自包含、含精确 API 契约,下一棒只读它 + 文件清单即可写前端,
+  不必通读全项目。zuris 现场设计了完整编辑器方案(写入流水线 + 查看 demo + 控制台),三处碰撞已拍:
+  ① 控制台只提示去 `.env` 配 key、显示密文,key 不进前端;② galaxy 可视化推 Phase 2,先做轻量 read/edit;
+  ③ node↔node 边推 Phase 2。Phase 1 用现有引擎 extract-first 路径(精炼=对 staging episode 就地编辑)。
 - README 和 `phase1_build.md` 大体跟当前实现一致;`plan_v3.md` 和 `project/out/*` 是历史方案,有大量旧设定,不要按它们施工。
 
 ## 当前代码事实

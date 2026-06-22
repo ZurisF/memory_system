@@ -135,6 +135,8 @@ def make_handler(cfg: Config):
                 return self._api_get_segments(parse_qs(u.query))
             if u.path == "/api/staging":
                 return self._api_get_staging(parse_qs(u.query))
+            if u.path == "/api/staging/all":
+                return self._api_staging_all()
             self._send(404, b"not found", "text/plain")
 
         def _api_get_staging(self, q) -> None:
@@ -146,6 +148,60 @@ def make_handler(cfg: Config):
             ct = preview_cache.get(cfg.preview_cache_dir, path)
             doc = staging_store.load(cfg.staging_episodes_dir, ct.session_id)
             self._json(_ui_staging(doc))
+
+        def _api_staging_all(self) -> None:
+            """汇总磁盘上所有在处理的会话(只扫 chunks + episodes 两个工作目录,不碰全量
+            transcript)。待整理区据此显示——磁盘有的工作一定列出,与浏览器候选区/缓存无关,
+            关页面/换实例不丢。uuid 经 _ui_* 剥掉。"""
+            from memory_system import staging_store
+
+            sessions: dict[str, dict] = {}
+
+            def _slot(sid: str, source_path: str) -> dict:
+                s = sessions.get(sid)
+                if s is None:
+                    s = sessions[sid] = {
+                        "session_id": sid, "source_path": source_path or "",
+                        "segments": [], "episodes": [],
+                        "chunk_retry": [], "retry": [], "updated_at": None,
+                    }
+                if source_path and not s["source_path"]:
+                    s["source_path"] = source_path
+                return s
+
+            def _newer(a, b):
+                return a if (a or "") >= (b or "") else b
+
+            # 未提取的段(chunks 工作态)
+            for f in sorted(cfg.chunks_dir.glob("*.json")):
+                doc = segments_store.load(cfg.chunks_dir, f.stem)
+                if not doc:
+                    continue
+                ui = _ui_doc(doc)
+                s = _slot(f.stem, doc.get("source_path", ""))
+                s["segments"] = ui["segments"]
+                s["chunk_retry"] = ui["retry"]
+                s["updated_at"] = _newer(s["updated_at"], ui.get("updated_at"))
+
+            # 已提取的五件套(episodes 工作态)
+            for f in sorted(cfg.staging_episodes_dir.glob("*.json")):
+                doc = staging_store.load(cfg.staging_episodes_dir, f.stem)
+                if not doc:
+                    continue
+                ui = _ui_staging(doc)
+                s = _slot(f.stem, doc.get("source_path", ""))
+                s["episodes"] = ui["episodes"]
+                s["retry"] = ui["retry"]
+                s["updated_at"] = _newer(s["updated_at"], ui.get("updated_at"))
+
+            # source 是否还在(transcript ~30 天会清:清了仍可审已提取的,但不能再提取新段)
+            out = []
+            for s in sessions.values():
+                sp = s.get("source_path") or ""
+                s["source_exists"] = bool(sp) and Path(sp).exists()
+                out.append(s)
+            out.sort(key=lambda x: x.get("updated_at") or "", reverse=True)
+            self._json({"sessions": out})
 
         def _api_get_segments(self, q) -> None:
             path = _confine((q.get("path") or [""])[0])
