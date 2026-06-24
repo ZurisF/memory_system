@@ -10,10 +10,12 @@ API:
   POST /api/select   {path, session_id, turn_idxs}  登记选段为已处理
   POST /api/chunk    {path, provider?, model?}      调切块 agent,落工作文件
   POST /api/segments {path, segments}               存人工编辑后的段(uuid 服务端重算)
+  POST /api/segments/delete {session_id|path, seg_ids, force?}  删段(改 chunks;已提取段需 force)
   POST /api/extract  {path, seg_ids?, provider?, model?}  逐段提取五件套,落 staging(按块回滚)
   POST /api/confirm  {path|session_id, stage_id}    确认 staging 条目入库
-  POST /api/reject   {path|session_id, stage_id, reason?}  拒绝 staging 条目
+  POST /api/reject   {path|session_id, stage_id, reason?}  拒绝 staging 条目(打回重做,留痕)
   POST /api/staging/edit {path|session_id, stage_id, fields}  编辑 staging 条目
+  POST /api/staging/delete {path|session_id, stage_id}  干净删除未入库 staging 条目(不留痕)
 """
 
 from __future__ import annotations
@@ -31,6 +33,11 @@ from memory_system.db.connection import connect
 from memory_system.transcript import describe, discover
 
 _WEB = Path(__file__).parent / "web"
+_STATIC_TYPES = {
+    ".css": "text/css; charset=utf-8",
+    ".html": "text/html; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+}
 
 # 前端 provider 选择器可见的后端;available() 现报是否能用。
 _AGENT_PROVIDERS = ["claude_cli", "deepseek", "fake"]
@@ -130,8 +137,11 @@ def make_handler(cfg: Config):
             u = urlparse(self.path)
             if u.path in ("/", "/index.html"):
                 return self._static("index.html", "text/html; charset=utf-8")
-            if u.path == "/app.js":
-                return self._static("app.js", "application/javascript; charset=utf-8")
+            if u.path.startswith("/") and "/" not in u.path[1:]:
+                name = u.path[1:]
+                ctype = _STATIC_TYPES.get(Path(name).suffix)
+                if ctype:
+                    return self._static(name, ctype)
             if u.path == "/api/transcripts":
                 return self._api_transcripts()
             if u.path == "/api/transcript":
@@ -226,6 +236,9 @@ def make_handler(cfg: Config):
 
         def _api_transcripts(self) -> None:
             infos = discover(cfg.transcripts_root)
+            # 磁盘上已动过的会话(有 chunks 段工作态或 staging 提取):列表里沉底
+            touched = {p.stem for p in cfg.chunks_dir.glob("*.json")}
+            touched |= {p.stem for p in cfg.staging_episodes_dir.glob("*.json")}
             items = []
             hidden_empty = 0
             for i in infos:
@@ -237,7 +250,8 @@ def make_handler(cfg: Config):
                 items.append(
                     {"session_id": i.session_id, "path": str(i.path), "cwd": i.cwd,
                      "mtime": i.mtime, "size": i.size, "line_count": i.line_count,
-                     "turn_count": len(ct.turns), "maybe_writing": i.maybe_writing})
+                     "turn_count": len(ct.turns), "maybe_writing": i.maybe_writing,
+                     "touched": i.session_id in touched})
             self._json({"root": str(cfg.transcripts_root),
                         "hidden_empty": hidden_empty, "transcripts": items})
 
@@ -272,11 +286,13 @@ def make_handler(cfg: Config):
                 "/api/select": self._api_select,
                 "/api/chunk": self._api_chunk,
                 "/api/segments": self._api_save_segments,
+                "/api/segments/delete": self._api_delete_segments,
                 "/api/extract": self._api_extract,
                 "/api/confirm": self._api_confirm,
                 "/api/reject": self._api_reject,
                 "/api/archive": self._api_archive,
                 "/api/staging/edit": self._api_staging_edit,
+                "/api/staging/delete": self._api_staging_delete,
             }
             handler = routes.get(u.path)
             if handler is None:
@@ -346,6 +362,26 @@ def make_handler(cfg: Config):
                 return self._json({"error": "缺 stage_id 或 fields"}, 400)
             try:
                 staging_store.edit_episode(cfg.staging_episodes_dir, session_id, stage_id, fields)
+            except KeyError as e:
+                return self._json({"error": str(e)}, 404)
+            doc = staging_store.load(cfg.staging_episodes_dir, session_id)
+            self._json({"ok": True, **_ui_staging(doc)})
+
+        def _api_staging_delete(self, body) -> None:
+            """干净删除一条未入库的 staging episode(不留痕,区别于 reject 的打回重做)。
+
+            只移除 episode;对应的段仍在 chunks.json,回到「未提取」可重提。
+            """
+            from memory_system import staging_store
+
+            session_id = self._session_for_staging(body)
+            if session_id is None:
+                return
+            stage_id = body.get("stage_id")
+            if not stage_id:
+                return self._json({"error": "缺 stage_id"}, 400)
+            try:
+                staging_store.remove_episode(cfg.staging_episodes_dir, session_id, stage_id)
             except KeyError as e:
                 return self._json({"error": str(e)}, 404)
             doc = staging_store.load(cfg.staging_episodes_dir, session_id)
@@ -495,6 +531,34 @@ def make_handler(cfg: Config):
                 return self._json({"error": "段重叠,会重复入库", "overlaps": vr["overlaps"]}, 400)
             doc = segments_store.save_full(cfg.chunks_dir, ct.session_id, str(path), mtime, norm)
             self._json({"ok": True, "gaps": vr["gaps"], **_ui_doc(doc)})
+
+        def _api_delete_segments(self, body) -> None:
+            """删段(单/多)。改 chunks.json,不碰 staging episode(段与已提取条目解耦)。
+
+            body: {session_id|path, seg_ids:[...], force?:bool}
+            未 force 且有段已在蒸馏区提取出 episode → 不删,回 staged 清单让前端汇总提示;
+            force=true → 照删(已提取的 episode 不受影响,仍可在蒸馏区审核/拒绝/删除)。
+            """
+            from memory_system import staging_store
+
+            session_id = self._session_for_staging(body)
+            if session_id is None:
+                return
+            seg_ids = body.get("seg_ids")
+            if not isinstance(seg_ids, list) or not seg_ids:
+                return self._json({"error": "缺 seg_ids 列表"}, 400)
+            seg_ids = [str(x) for x in seg_ids]
+
+            # 联动检查:这些段里哪些已在蒸馏区提取出 episode
+            sdoc = staging_store.load(cfg.staging_episodes_dir, session_id)
+            extracted = {e.get("seg_id") for e in (sdoc.get("episodes", []) if sdoc else [])}
+            staged = [sid for sid in seg_ids if sid in extracted]
+            if staged and not body.get("force"):
+                return self._json({"ok": False, "needs_confirm": True, "staged": staged,
+                                   "message": f"{len(staged)} 个待删段已在蒸馏区有提取"}, 409)
+
+            doc, deleted = segments_store.delete(cfg.chunks_dir, session_id, seg_ids)
+            self._json({"ok": True, "deleted": deleted, "staged": staged, **_ui_doc(doc)})
 
         def _api_select(self, body) -> None:
             path = _confine(body.get("path", ""))

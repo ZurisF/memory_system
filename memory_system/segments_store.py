@@ -190,6 +190,29 @@ def split(segments: list[dict], seg_id: str, at_turn: int, umap: dict[int, list[
     return sorted(rest, key=lambda s: s["start_turn"])
 
 
+def delete(chunks_dir: Path, session_id: str, seg_ids: list[str]) -> tuple[dict | None, int]:
+    """删除指定 seg_id 的段,落盘。删后无段则移除整个工作文件(等价该会话未切块)。
+
+    返回 (更新后的 doc 或 None, 实删段数)。**不碰 staging episode**:段与已提取条目解耦,
+    删段不影响已蒸馏的 episode(episode 自带 source_text)。
+    """
+    doc = load(chunks_dir, session_id)
+    if not doc:
+        return None, 0
+    target = set(seg_ids or [])
+    kept = [s for s in doc.get("segments", []) if s.get("seg_id") not in target]
+    deleted = len(doc.get("segments", [])) - len(kept)
+    if not kept:
+        # 无段 = 等价未切块,删工作文件,保持蒸馏列表整洁
+        try:
+            path_for(chunks_dir, session_id).unlink()
+        except OSError:
+            pass
+        return None, deleted
+    doc["segments"] = kept
+    return _write(chunks_dir, doc), deleted
+
+
 def set_boundary(
     segments: list[dict], seg_id: str, start_turn: int, end_turn: int, umap: dict[int, list[str]]
 ) -> list[dict]:
