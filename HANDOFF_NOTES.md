@@ -3,16 +3,21 @@
 > 目的:让后续实例快速看清当前真实状态、优先隐患、方案文件可信度。
 > 最近整理:2026-06-21, Codex 审查后重排;同日两个 P1 已修(见下)。
 > 2026-06-21 晚更新:上一实例留下的 S5 GUI 草稿已 checkpoint 并收束核心写入链路。
+> 2026-06-24 更新:前端静态资源已轻整理拆分,仍保持零构建/原生 HTML+JS 架构。
+> 2026-06-24 续:写入侧 Phase 1 收尾——蒸馏段预览 + 轻量撤销修 + LLM 调用在途锁(防连点重复处理)
+>   已完成并浏览器实测通过;删段/删 staging 后端补了回归门(verify_s5 门 I + verify_web_api 删段门)。
 
 ## 先读结论
 
 - 项目没有完全失控:S1-S5 验证脚本在项目 `.venv` 下全绿(verify_s3 增门 7、verify_s5 增门 H)。
 - **两个 P1 已修(2026-06-21)**:① confirm 失败残留 node 碎片 → 已改成 DB commit 成功后才原子落盘;
   ② agent 切块坏边界静默夹紧 → 已改成越界/逆序/非整数抛错走重试。详见下方两节(保留复现上下文,标 ✅ 已修)。
-- **S5 富审核 GUI 已有 Phase 1 写入侧草稿并已收束核心路径**:`web/` 现在有「切段 / 待整理区」两屏、
-  候选篮子、处理锁、提取总结、staging 五件套编辑、批量 confirm/reject。上一实例的大改已先提交为
+- **S5 富审核 GUI 已有 Phase 1 写入侧草稿并已收束核心路径**:`web/` 现在有「切段 / 蒸馏」两屏、
+  候选篮子、处理锁、提取总结、staging 五件套编辑、批量 confirm/reject/delete。上一实例的大改已先提交为
   `2dd8d17 checkpoint: prior frontend triage draft`;随后又修了 session_id 审核契约、dirty 保护、nodes JSON
-  编辑和 fake provider 默认提取。**未完成**:查看侧 demo、控制台、单开去噪对比、自动精炼 agent、galaxy。
+  编辑、fake provider 默认提取、删除/排序/批量按钮绑定。2026-06-24 已把前端从「一个巨型 app.js +
+  内联 CSS」拆成多个静态文件(见下方文件清单),并收尾了**蒸馏段预览 + 轻量撤销修 + LLM 在途锁**(已实测)。
+  **未完成**:查看侧 demo、控制台、单开去噪对比、自动精炼 agent、galaxy。
 - 完整前端施工书仍在:
   `~/Workspace/project/frontend_plan.md`——自包含、含精确 API 契约,下一棒只读它 + 文件清单即可写前端,
   不必通读全项目。zuris 现场设计了完整编辑器方案(写入流水线 + 查看 demo + 控制台),三处碰撞已拍:
@@ -25,6 +30,15 @@
 - 包名/命令:`memory_system` / `memory-system`。
 - 数据主目录默认 `~/.memory_system`,可由 `MEMORY_SYSTEM_HOME` 覆盖。
 - 当前 GUI:`memory-system serve` 启标准库 `http.server` + 原生 HTML/JS,默认 `http://127.0.0.1:8765`。
+  前端仍在 `memory_system/web/`,但 2026-06-24 已拆成:
+  - `index.html`:页面骨架与脚本顺序。
+  - `styles.css`:全部 CSS。
+  - `state.js`:全局状态、localStorage、通用工具。
+  - `transcripts.js`:左侧 transcript 列表、候选篮子、切段/蒸馏阶段切换。
+  - `chunk.js`:切段屏主逻辑(加载 transcript、段编辑、保存、删段、标已处理)。
+  - `triage.js`:蒸馏/审核屏主逻辑(staging 列表、五件套编辑、extract/confirm/reject/delete、段预览展开)。
+  - `api.js`:provider 加载、`postJSON`、**`once(key,fn,btn)` 在途锁**(LLM/写库耗时操作的防连点冷却)。
+  - `app.js`:启动与事件绑定。
 - embedding 默认 DashScope `text-embedding-v4`,1024 维;fake provider 只用于离线测试。
 - chat agent 层已有 `claude_cli` / OpenAI 兼容 / fake。切块默认 `sonnet`,提取默认 `opus`。
 - S1-S5 引擎/API/CLI 基本完成:
@@ -33,10 +47,11 @@
   - S3:切块 agent + S3 GUI,段工作态落 `home/staging/chunks/<session>.json`。
   - S4:提取五件套,按块回滚,staging 工作态落 `home/staging/episodes/<session>.json`。
   - S5 第一段:confirm/reject/archive 的引擎/API/CLI,active episode 碎片 + 增量入库。
-  - S5 GUI 写入侧:切段→待整理→extract→staging edit→confirm/reject 已接入,核心 API 有 headless 回归。
+  - S5 GUI 写入侧:切段→蒸馏→extract→staging edit→confirm/reject/delete 已接入,核心 API 有 headless 回归。
 - 未完成:
   - S5 查看侧 demo(`GET /api/memories` 等尚未实现)与控制台(`GET /api/agent/config` 等尚未实现)。
   - S5 写入侧仍缺单开去噪对比/更精致的原文对比;当前是 staging episode 内联编辑 source_text。
+    (段预览、轻量撤销修、LLM 在途锁已于 2026-06-24 完成。)
   - S6 检索模块。
   - S7 recall 工具。
   - S8 开场注入。
@@ -56,14 +71,36 @@
 
 结果全部 PASS。
 
-`verify_web_api.py` 是本轮新增的 HTTP 级 smoke test:临时起 `ThreadingHTTPServer`,走 `/api/segments` →
+`verify_web_api.py` 是 HTTP 级 smoke test:临时起 `ThreadingHTTPServer`,走 `/api/segments` →
 `/api/extract(fake)` → 删除源 jsonl → 用 `session_id` 调 `/api/staging/edit|reject|confirm`。它证明已提取
 staging episode 在源 transcript 清掉后仍可审核/入库。注意:在受限 sandbox 内直接绑定本地端口可能被拒,
 需要允许临时绑定 `127.0.0.1` 后再跑。
 
+2026-06-24 新增删段回归门(两处互补):
+- **verify_s5 门 I**(引擎层,不绑端口):`segments_store.delete` 删段不碰 staging、删光 unlink 工作文件;
+  `staging_store.remove_episode` 干净撤不留 rejected 痕(区别于 reject)、不落地 node、不动 DB。钉「段↔episode 解耦」。
+- **verify_web_api 删段门**(HTTP 层):无 episode 段干净删 / 已提取段不带 `force` 回 **409 needs_confirm** /
+  `force` 删成功且已提取 episode 不受影响 / `/api/staging/delete` 干净撤。钉 server 的 409 决策。
+
 注意:直接用系统 `python3 scripts/verify_s*.py` 会因包路径或 `sqlite_vec` 未安装失败。验证脚本跑法应写 `.venv/bin/python ...`,或先按 README `pip install -e .`。
 
 `PYTHONPATH=.` 只影响单次命令,不会写入持久配置。本轮已清理项目代码目录的 `__pycache__` 与验证/复现留下的 `/private/var/.../T/memsys_*` 临时 home;`.venv` 内部包缓存保留,属于环境正常状态。
+
+2026-06-24 前端拆分整理额外验证:
+
+```bash
+node --check memory_system/web/state.js
+node --check memory_system/web/transcripts.js
+node --check memory_system/web/triage.js
+node --check memory_system/web/api.js
+node --check memory_system/web/chunk.js
+node --check memory_system/web/app.js
+python3 -m py_compile memory_system/server.py
+```
+
+另用 `.venv/bin/python -m memory_system serve --port 8876` 临时启动服务,确认 `/`、`/styles.css`、
+`/state.js`、`/transcripts.js`、`/triage.js`、`/api.js`、`/chunk.js`、`/app.js` 均返回 200 且 content type 正常。
+受 sandbox 限制,临时启动/本地 curl 可能需要允许绑定/访问 `127.0.0.1`;测试后服务已 Ctrl-C 关闭。
 
 ## 优先隐患
 
@@ -179,10 +216,14 @@ Codex 用临时 home 复现过:confirm 故意失败后 `node_exists_after_failed
   增量入库;沿用 `_confine` 路径校验、`_ui_staging` 剥 uuid)。do_POST 改路由表。
 - **CLI**:`confirm <path> [--stage|--all] [--provider]`、`reject <path> --stage [--reason]`、
   `archive <public_id>`。
-- **S5 GUI 写入侧现状(2026-06-21 晚)**:已有「切段 / 待整理区」两屏,待整理区扫
+- **S5 GUI 写入侧现状(2026-06-24)**:已有「切段 / 蒸馏」两屏,蒸馏区扫
   `staging/chunks` + `staging/episodes` 聚类展示;可提取总结、内联编辑 staging 五件套/source_text、
-  批量 confirm/reject。审核 POST 已支持 `{session_id, stage_id}`;源 jsonl 清掉后已提取 episode 仍可
-  edit/reject/confirm。仍缺单开去噪对比、查看侧 demo、控制台。
+  批量 confirm/reject/delete。审核 POST 已支持 `{session_id, stage_id}`;源 jsonl 清掉后已提取 episode 仍可
+  edit/reject/confirm。切段区支持全选段/删除勾选段,蒸馏区支持全选/删除选中,删除语义见
+  `HANDOFF_S5_DELETE.md`。前端已从单个巨型 `app.js` + 内联 CSS 拆成 `styles.css/state.js/transcripts.js/
+  chunk.js/triage.js/api.js/app.js`,便于后续单独改界面。**2026-06-24 收尾**:蒸馏段预览(展开看段回合原文)、
+  轻量撤销修(去 ctrl-z 全局劫持、按钮改「还原到上次保存」)、LLM 在途锁(`once` 防连点重复提取/确认)均已完成实测。
+  仍缺单开去噪对比、查看侧 demo、控制台、三视图导航骨架。
 - **关键不变量**:uuid 不进碎片(verify 读裸文件断言)、碎片是正本(删库 rebuild 无损还原,含 archived
   状态)、别名合并幂等(二次 add_alias 不长重复 node)。
   详细方案随 `phase1_build.md §S5`。
@@ -230,9 +271,12 @@ Codex 审查注(原文,记录):上面 S5 原交接是从 HEAD 原样恢复。当
 1. ~~修 P1 confirm 失败污染 node 碎片~~ ✅ 已修(verify_s5 门 H)。
 2. ~~修 P1-A agent 切块边界严校~~ ✅ 已修(verify_s3 门 7)。
 3. **继续 S5 GUI Phase 1**:
-   - 先手动浏览器验一下写入侧真实交互(候选篮子、dirty 保护、待整理内联编辑、批量 confirm/reject)。
-   - 补查看侧 demo 所需 API:`/api/memories`、`/api/memory`、`/api/node`、`/api/memory/edit`、`/api/node/edit`。
+   - ~~蒸馏区段预览~~ ✅ 已完成(triSegCard 展开,GET /api/transcript 切片渲染气泡,源已清灰掉,TPREVIEW 缓存)。
+   - ~~轻量撤销修~~ ✅ 已完成(删 ctrl-z 全局劫持、按钮改「还原到上次保存」)。
+   - ~~LLM 调用在途锁~~ ✅ 已完成(api.js `once`,套在提取/确认上,防连点重复处理)。
+   - **下一步**:补查看侧 demo 所需 API:`/api/memories`、`/api/memory`、`/api/node`、`/api/memory/edit`、`/api/node/edit`。
    - 补控制台 API/UI:`/api/agent/config`、可选 `/api/agent/test`;key 只显示掩码,不进前端表单。
+   - 顶部导航 + 三视图(写入/查看/控制台)冻结骨架尚未搭(见 frontend_plan §3/§10)。
    - 单开去噪/原文对比可在查看侧前后择机做;自动精炼 agent 留 Phase 2。
 4. (可顺手)收紧 fake provider 写锁、改迁移器 applied set、加 `busy_timeout`——见下方 P2/P3,非阻塞。
 5. 再进入 S6 检索模块。
@@ -244,4 +288,6 @@ Codex 审查注(原文,记录):上面 S5 原交接是从 HEAD 原样恢复。当
 - S5 第一段:见上方专章;confirm/reject/archive 引擎/API/CLI 已完成。confirm 失败残留 node 的 P1 已于
   2026-06-21 修复(node 碎片改 DB 成功后原子落盘)。
 - S5 GUI 写入侧:上一实例先做了过大的前端草稿并 checkpoint 为 `2dd8d17`;随后已收束为可验证的
-  session_id 驱动审核链路。下一步 = 手动浏览器 QA + 查看侧 demo + 控制台。
+  session_id 驱动审核链路。2026-06-24 已完成前端静态文件拆分整理和蒸馏工具条缺失绑定,
+  并收尾段预览 + 轻量撤销修 + LLM 在途锁(均浏览器实测),后端补删段回归门。
+  下一步 = 查看侧 demo(/api/memories 等)+ 控制台 + 三视图导航骨架。

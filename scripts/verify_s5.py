@@ -24,7 +24,7 @@ os.environ["MEMORY_AGENT_PROVIDER"] = "fake"
 
 from pathlib import Path  # noqa: E402
 
-from memory_system import archive, staging_store  # noqa: E402
+from memory_system import archive, segments_store, staging_store  # noqa: E402
 from memory_system.agent.fake import FakeChatProvider, make_extraction  # noqa: E402
 from memory_system.chunk import manual_segments, validate_segments  # noqa: E402
 from memory_system.config import load_config  # noqa: E402
@@ -303,5 +303,59 @@ assert node_path(CFG.nodes_dir, "崩溃概念").exists(), "重试成功才落地
 assert episode_path(CFG.episodes_dir, pidf).exists()
 assert staging_store.get_episode(CFG.staging_episodes_dir, ctf.session_id, "e1") is None
 ok("confirm DB 失败:不写碎片(含 node)、staging 不动、DB 不增;修好后干净重试成功(P1)")
+
+
+# ============ 门 I:删段 / 删 staging 解耦回归(删除只动工作态,绝不碰 episode/碎片/DB)============
+# 关键不变量:段与已提取 episode 解耦——删段不动 episode;删 staging 是干净撤(不留痕,区别于 reject)。
+# (server 层的「已提取段不带 force 回 409」由 verify_web_api.py 把关;此处测引擎层不变量,不绑端口。)
+ctd = mk_ct(20, session="sess-del")
+dsegs = manual_segments(ctd, [(1, 10), (11, 20)])
+for i, s in enumerate(dsegs, 1):
+    s["seg_id"] = f"d{i}"
+segments_store.save_full(CFG.chunks_dir, ctd.session_id, ctd.path, None, dsegs)
+# 只提取 d1 → staging episode;d2 保持未提取(用于"无 episode 干净删")
+dbatch = extract_segments(
+    ctd, [dsegs[0]],
+    FakeChatProvider(behaviors=[make_extraction(
+        overview="删段门 d1 overview。", summary="d1 弧线。",
+        nodes=[{"label": "删段概念", "action": "new", "reason": "测试,不应落地"}],
+        salience_tier=1)]),
+    [], model="opus", timeout=10, max_retries=0)
+assert len(dbatch.staged) == 1
+dseg, dres, dsrc = dbatch.staged[0]
+staging_store.upsert_episode(CFG.staging_episodes_dir, ctd.session_id, ctd.path, dseg, dres, dsrc,
+                             created_at="2026-06-19T22:01:00Z")
+con = connect(CFG.db_path)
+try:
+    (ep_before_del,) = con.execute("SELECT COUNT(*) FROM episodes").fetchone()
+finally:
+    con.close()
+
+# (1) 删未提取段 d2:干净删,chunks 仍在(还剩 d1),staging 不受影响
+doc, n = segments_store.delete(CFG.chunks_dir, ctd.session_id, ["d2"])
+assert n == 1 and doc is not None and [s["seg_id"] for s in doc["segments"]] == ["d1"], doc
+assert staging_store.get_episode(CFG.staging_episodes_dir, ctd.session_id, "e1") is not None
+
+# (2) 删已提取段 d1(=删光):unlink 整个工作文件;已提取 episode 绝不受影响
+doc, n = segments_store.delete(CFG.chunks_dir, ctd.session_id, ["d1"])
+assert n == 1 and doc is None, "删光段应 unlink 工作文件,返回 None"
+assert segments_store.load(CFG.chunks_dir, ctd.session_id) is None, "工作文件应已 unlink"
+assert staging_store.get_episode(CFG.staging_episodes_dir, ctd.session_id, "e1") is not None, \
+    "删段(含已提取段)绝不动 staging episode"
+
+# (3) staging remove_episode:干净撤、不留 rejected 痕(区别于 reject)、不碰碎片/DB
+staging_store.remove_episode(CFG.staging_episodes_dir, ctd.session_id, "e1")
+ddoc = staging_store.load(CFG.staging_episodes_dir, ctd.session_id)
+assert ddoc is None or all(e["stage_id"] != "e1" for e in ddoc.get("episodes", [])), ddoc
+assert ddoc is None or not any(r.get("stage_id") == "e1" for r in ddoc.get("rejected", [])), \
+    "delete 是干净撤,不应留 rejected 痕(那是 reject 的语义)"
+assert not node_path(CFG.nodes_dir, "删段概念").exists(), "删 staging 不应落地其 node"
+con = connect(CFG.db_path)
+try:
+    (ep_after_del,) = con.execute("SELECT COUNT(*) FROM episodes").fetchone()
+    assert ep_after_del == ep_before_del, "删段/删 staging 只动工作态,绝不动 DB 正本"
+finally:
+    con.close()
+ok("删段/删 staging 解耦:删段不动 episode、删光 unlink、remove 干净撤不留痕、不碰碎片/DB")
 
 print("S5 审核/归档层 ALL PASS ✅")

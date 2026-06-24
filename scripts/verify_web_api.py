@@ -15,6 +15,8 @@ import threading
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib import request
+from urllib.error import HTTPError
+from urllib.parse import quote
 
 _TMP = tempfile.mkdtemp(prefix="memsys_webapi_")
 _ROOT = Path(_TMP) / "transcripts"
@@ -66,6 +68,20 @@ def _post(base: str, path: str, body: dict) -> dict:
     )
     with request.urlopen(req, timeout=10) as r:
         return json.loads(r.read().decode("utf-8"))
+
+
+def _post_status(base: str, path: str, body: dict) -> tuple[int, dict]:
+    """POST 并返回 (status, body),用于断言 4xx(如删段 409 needs_confirm)。"""
+    data = json.dumps(body).encode("utf-8")
+    req = request.Request(
+        base + path, data=data, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with request.urlopen(req, timeout=10) as r:
+            return r.status, json.loads(r.read().decode("utf-8"))
+    except HTTPError as e:
+        return e.code, json.loads(e.read().decode("utf-8"))
 
 
 def _get(base: str, path: str) -> dict:
@@ -130,6 +146,58 @@ def main() -> None:
         assert confirmed.get("ok") and confirmed["public_id"].startswith("ep_"), confirmed
         assert confirmed["episodes"] == [], confirmed
         ok("/api/confirm 支持 session_id,源 jsonl 已清仍可入库")
+
+        # ---- 删段回归门:段↔episode 解耦 + 已提取段不带 force 回 409 ----
+        src2 = _ROOT / "sess-del.jsonl"
+        rows2 = []
+        for i in range(1, 5):
+            rows2.append(_row("user", f"x{i}", f"删段人类第{i}句", f"2026-06-20T10:{i:02d}:00Z"))
+            rows2.append(_row("assistant", f"y{i}", [{"type": "text", "text": f"删段Claude第{i}句"}],
+                              f"2026-06-20T10:{i:02d}:10Z"))
+        src2.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows2) + "\n", "utf-8")
+        dsegs = [
+            {"start_turn": 1, "end_turn": 2, "tag": "前", "cut_reason": "t", "short": True,
+             "deletions": [], "origin": "manual"},
+            {"start_turn": 3, "end_turn": 4, "tag": "后", "cut_reason": "t", "short": True,
+             "deletions": [], "origin": "manual"},
+        ]
+        ds = _post(base, "/api/segments", {"path": str(src2), "segments": dsegs})
+        assert ds.get("ok") and [s["seg_id"] for s in ds["segments"]] == ["s1", "s2"], ds
+        # 只提取 s1 → e1;s2 保持未提取
+        de = _post(base, "/api/extract", {"path": str(src2), "seg_ids": ["s1"]})
+        assert de.get("ok") and de["staged"] == 1, de
+
+        # (1) 无 episode 的段 s2:干净删
+        d1 = _post(base, "/api/segments/delete", {"session_id": "sess-del", "seg_ids": ["s2"]})
+        assert d1.get("ok") and d1["deleted"] == 1 and d1.get("staged") == [], d1
+        ok("删段:无 episode 的段干净删")
+
+        # (2) 有 episode 的段 s1 不带 force → 409 needs_confirm,且段未删
+        st, d2 = _post_status(base, "/api/segments/delete",
+                              {"session_id": "sess-del", "seg_ids": ["s1"]})
+        assert st == 409 and d2.get("needs_confirm") and d2.get("staged") == ["s1"], (st, d2)
+        segs_now = _get(base, "/api/segments?path=" + quote(str(src2)))
+        assert [s["seg_id"] for s in segs_now["segments"]] == ["s1"], segs_now
+        ok("删段:已提取段不带 force 回 409,段未删")
+
+        # (3) force 删成功,且已提取 episode e1 不受影响
+        st, d3 = _post_status(base, "/api/segments/delete",
+                              {"session_id": "sess-del", "seg_ids": ["s1"], "force": True})
+        assert st == 200 and d3.get("ok") and d3["deleted"] == 1, (st, d3)
+        sess_del = next(s for s in _get(base, "/api/staging/all")["sessions"]
+                        if s["session_id"] == "sess-del")
+        assert [e["stage_id"] for e in sess_del["episodes"]] == ["e1"], \
+            "force 删段绝不影响已提取 episode"
+        ok("删段:force 删成功,已提取 episode 不受影响")
+
+        # (4) staging delete:干净撤 e1
+        d4 = _post(base, "/api/staging/delete", {"session_id": "sess-del", "stage_id": "e1"})
+        assert d4.get("ok"), d4
+        left = [s for s in _get(base, "/api/staging/all")["sessions"]
+                if s["session_id"] == "sess-del"]
+        assert not left or all(e["stage_id"] != "e1" for e in left[0]["episodes"]), \
+            "staging delete 应撤掉 e1"
+        ok("删 staging:干净撤掉条目")
     finally:
         httpd.shutdown()
         httpd.server_close()

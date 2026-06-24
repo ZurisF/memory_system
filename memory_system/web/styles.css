@@ -218,10 +218,18 @@
   .rretry { color:var(--err); }
 
   /* ---- 待整理中栏:段卡 / 条目卡 ---- */
-  .tri-seg-card { display:flex; align-items:center; gap:8px; margin:8px 14px;
+  .tri-seg-card { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:8px 14px;
          padding:8px 10px; border:1px solid var(--line); border-radius:7px; background:var(--panel); }
   .tri-seg-card .seg-meta { flex:1; min-width:0; }
   .tri-seg-card .seg-meta i { color:var(--muted); font-style:normal; font-size:12px; }
+  .tri-seg-card .seg-prev-btn { background:#2a2d33; color:var(--fg); border:1px solid var(--line);
+         border-radius:5px; padding:5px 10px; font-size:13px; cursor:pointer; flex:none; }
+  .tri-seg-card .seg-prev-btn:hover { border-color:var(--me); }
+  .tri-seg-card .seg-prev-btn:disabled { opacity:.4; cursor:not-allowed; }
+  .tri-seg-card .seg-preview { flex-basis:100%; width:100%; margin-top:6px; max-height:300px;
+         overflow:auto; border-top:1px solid var(--line); padding-top:8px; }
+  .tri-seg-card .seg-preview .turn { margin:2px 0; }
+  .tri-seg-card .seg-preview .list-note { color:var(--muted); font-size:12px; padding:4px 0; }
   .tri-seg-card .seg-extract { background:#2a2d33; color:var(--fg); border:1px solid var(--line);
          border-radius:5px; padding:5px 10px; font-size:13px; cursor:pointer; flex:none; }
   .tri-seg-card .seg-extract:hover { border-color:var(--me); }

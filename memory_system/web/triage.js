@@ -106,7 +106,7 @@ function renderTriMain() {
   updateTriageBar();
 }
 
-// 未提取的段:小卡 + 提取按钮 + 勾选
+// 未提取的段:小卡 + 预览展开 + 提取按钮 + 勾选
 function triSegCard(r, s) {
   const k = tkey(r.session_id, "seg", s.seg_id);
   const card = document.createElement("div");
@@ -115,14 +115,60 @@ function triSegCard(r, s) {
     `<input type="checkbox" class="r-cb"${SELT.has(k) ? " checked" : ""}>` +
     `<span class="seg-meta">段 ${s.start_turn}–${s.end_turn} · ${esc(s.tag || "")} ` +
     `<i>[${esc(s.origin || "")}] 未提取</i></span>`;
+  // 预览按钮:展开看该段回合原文(源 jsonl 已清则灰掉)
+  const prevBtn = document.createElement("button");
+  prevBtn.className = "seg-prev-btn"; prevBtn.textContent = "预览";
+  prevBtn.disabled = !r.source_exists;
+  if (!r.source_exists) prevBtn.title = "源 jsonl 已清,无法预览原文";
+  const prevBox = document.createElement("div");
+  prevBox.className = "seg-preview"; prevBox.style.display = "none";
+  prevBtn.onclick = () => toggleSegPreview(r, s, prevBtn, prevBox);
+  // 提取按钮:套在途锁,防重复点触发重复提取
   const btn = document.createElement("button");
   btn.className = "seg-extract"; btn.textContent = "提取总结";
   btn.disabled = !r.source_exists;
   if (!r.source_exists) btn.title = "源 jsonl 已清,不能再提取新段";
-  btn.onclick = () => extractPaths({ [r.path]: [s.seg_id] });
+  btn.onclick = () => once("extract:" + r.path + ":" + s.seg_id,
+    () => extractPaths({ [r.path]: [s.seg_id] }), btn);
+  card.appendChild(prevBtn);
   card.appendChild(btn);
+  card.appendChild(prevBox);
   card.querySelector(".r-cb").onclick = (ev) => { toggleSel(k, ev.target.checked); };
   return card;
+}
+
+// 展开/收起段预览:首次展开抓 transcript(缓存),按 idx∈[start,end] 切片渲染气泡
+async function toggleSegPreview(r, s, btn, box) {
+  if (box.style.display !== "none") {   // 已开 → 收起
+    box.style.display = "none"; btn.textContent = "预览"; return;
+  }
+  box.style.display = "";
+  btn.textContent = "收起";
+  if (box.dataset.loaded) return;       // 已渲染过,直接显
+  box.innerHTML = `<div class="list-note">加载中…</div>`;
+  let turns = TPREVIEW.get(r.path);
+  if (!turns) {
+    try {
+      const d = await (await fetch("/api/transcript?path=" + encodeURIComponent(r.path))).json();
+      if (d.error) throw new Error(d.error);
+      turns = d.turns || [];
+      TPREVIEW.set(r.path, turns);
+    } catch (e) {
+      box.innerHTML = `<div class="list-note">预览加载失败:${esc(String(e))}</div>`;
+      return;
+    }
+  }
+  const slice = turns.filter((t) => t.idx >= s.start_turn && t.idx <= s.end_turn);
+  if (!slice.length) { box.innerHTML = `<div class="list-note">该段回合不在源文件内。</div>`; return; }
+  box.innerHTML = slice.map((t) => {
+    let h = `<div class="turn"><div class="who">回合 ${t.idx}</div>`;
+    if (t.human_text)
+      h += `<div class="bubble me"><span class="who me">[我]</span>${esc(t.human_text)}</div>`;
+    if (t.assistant_text)
+      h += `<div class="bubble claude"><span class="who claude">[Claude]</span>${esc(t.assistant_text)}</div>`;
+    return h + `</div>`;
+  }).join("");
+  box.dataset.loaded = "1";
 }
 
 // 已提取条目:勾选头 + 五件套编辑器(复用 epEditor)
@@ -152,7 +198,8 @@ function triRetryCard(r, rt) {
   btn.className = "seg-extract"; btn.textContent = "重试提取";
   btn.disabled = !r.source_exists;
   if (!r.source_exists) btn.title = "源 jsonl 已清,不能再重试提取";
-  btn.onclick = () => extractPaths({ [r.path]: [rt.seg_id] });
+  btn.onclick = () => once("extract:" + r.path + ":" + rt.seg_id,
+    () => extractPaths({ [r.path]: [rt.seg_id] }), btn);
   card.appendChild(btn);
   return card;
 }
@@ -207,7 +254,7 @@ function epEditor(r, e) {
     `<div class="hl-prev"></div>` +
     `<div class="acts">` +
     `<button class="ed-save primary">保存编辑</button>` +
-    `<button class="ed-undo">↶ 撤销(ctrl-z)</button>` +
+    `<button class="ed-undo">还原到上次保存</button>` +
     `<button class="ed-confirm primary" title="写入正本+DB,不可逆(只能事后 archive)">确认入库</button>` +
     `<button class="ed-reject danger">拒绝</button>` +
     `</div>`;
@@ -281,11 +328,8 @@ function epEditor(r, e) {
   box.querySelector(".ed-undo").onclick = () => undoEpEdit(r, e, k);
   box.querySelector(".ed-confirm").onclick = () => confirmEps([{ session_id: r.session_id, stage_id: e.stage_id }]);
   box.querySelector(".ed-reject").onclick = () => rejectEps([{ session_id: r.session_id, stage_id: e.stage_id }]);
-
-  // ctrl-z 绑定(编辑器内)
-  box.addEventListener("keydown", (ev) => {
-    if ((ev.ctrlKey || ev.metaKey) && ev.key === "z") { ev.preventDefault(); undoEpEdit(r, e, k); }
-  });
+  // 不再全局劫持 ctrl-z:文本框内 ctrl-z 恢复成系统原生逐字撤销;
+  // 整条回退用「还原到上次保存」按钮(undoEpEdit,弹上次保存快照)。
   return box;
 }
 
@@ -372,24 +416,28 @@ function doExtractSel() {
     (byPath[s.source_path] = byPath[s.source_path] || []).push(id);
   });
   if (!Object.keys(byPath).length) { toast("先勾选未提取的段", true); return; }
-  extractPaths(byPath);
+  once("extract:bulk", () => extractPaths(byPath), $("#t-extract"));
 }
 
 // ---- 确认入库(可批量,二次确认,逐条调以便单条失败定位)----
 async function confirmEps(items) {
   if (!items.length) return;
-  if (!window.confirm(`确认把 ${items.length} 条写入记忆正本 + DB?\n此操作不可逆(只能事后 archive)。`)) return;
-  let okN = 0;
-  for (const it of items) {
-    const d = await postJSON("/api/confirm", { session_id: it.session_id, stage_id: it.stage_id });
-    if (!d || d.error) {
-      toast(`确认失败(${it.stage_id}): ${(d && d.error) || "网络"},已停止`, true);
-      break;
+  // 在途锁:确认要写库 + 重嵌向量(联网耗时),期间吞掉对同一批的重复点击,防重复入库
+  const key = "confirm:" + items.map((i) => i.session_id + ":" + i.stage_id).sort().join("|");
+  return once(key, async () => {
+    if (!window.confirm(`确认把 ${items.length} 条写入记忆正本 + DB?\n此操作不可逆(只能事后 archive)。`)) return;
+    let okN = 0;
+    for (const it of items) {
+      const d = await postJSON("/api/confirm", { session_id: it.session_id, stage_id: it.stage_id });
+      if (!d || d.error) {
+        toast(`确认失败(${it.stage_id}): ${(d && d.error) || "网络"},已停止`, true);
+        break;
+      }
+      okN++;
+      toast(`已入库 ${d.public_id}`);
     }
-    okN++;
-    toast(`已入库 ${d.public_id}`);
-  }
-  if (okN) { SELT.clear(); await loadTriageAll(); }
+    if (okN) { SELT.clear(); await loadTriageAll(); }
+  });
 }
 
 function doConfirmSel() {
