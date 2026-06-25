@@ -22,6 +22,7 @@ function switchView(name) {
     b.classList.toggle("active", b.dataset.view === name);
   });
   if (name === "graph") Graph.onShow(); else Graph.onHide();
+  if (name === "console" && typeof Console !== "undefined") Console.onShow();
 }
 
 document.querySelectorAll("#topnav .nav-btn").forEach(function (b) {

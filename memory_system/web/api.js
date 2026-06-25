@@ -30,20 +30,22 @@ async function loadProviders() {
   const d = await (await fetch("/api/agent/providers")).json();
   PROVIDERS = d.providers || [];
   CHUNK_MODEL = d.chunk_model || "sonnet";
-  const fill = (sel) => {
+  const fill = (sel, role) => {
     if (!sel) return;
+    const defProvider = role === "chunk" ? (d.chunk_provider || d.chunk_model) :
+                        role === "triage" ? (d.extract_provider || d.extract_model) : "";
     sel.innerHTML = "";
     PROVIDERS.forEach((p) => {
       const o = document.createElement("option");
       o.value = p.id;
-      o.textContent = `${p.id}${p.available ? "" : " (不可用)"}${p.default ? " ✓默认" : ""}`;
+      o.textContent = `${p.id}${p.available ? "" : " (不可用)"}${p.id === defProvider ? " ✓默认" : ""}`;
       o.disabled = !p.available;
-      if (p.default && p.available) o.selected = true;
+      if (p.id === defProvider && p.available) o.selected = true;
       sel.appendChild(o);
     });
   };
-  fill($("#provider"));    // 切段 agent 选择器
-  fill($("#tri-provider")); // 提取 agent 选择器(待整理右栏)
+  fill($("#provider"), "chunk");     // 切段 agent 选择器
+  fill($("#tri-provider"), "triage"); // 提取 agent 选择器(待整理右栏)
   $("#model").placeholder = `模型(空=默认 ${CHUNK_MODEL})`;
   const tm = $("#tri-model");
   if (tm) tm.placeholder = `模型(空=默认 ${d.extract_model || "opus"})`;

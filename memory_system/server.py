@@ -43,7 +43,86 @@ _STATIC_TYPES = {
 }
 
 # 前端 provider 选择器可见的后端;available() 现报是否能用。
-_AGENT_PROVIDERS = ["claude_cli", "deepseek", "fake"]
+_AGENT_PROVIDERS = ["claude_cli", "fake"]
+
+
+def _mask_key(env_var: str) -> str | None:
+    """读取环境变量,返回掩码形式如 sk-****abcd;未配返回 None。"""
+    import os as _os
+    v = _os.environ.get(env_var, "").strip()
+    if not v:
+        return None
+    if len(v) <= 8:
+        return v[:2] + "****" + v[-2:]
+    return v[:3] + "****" + v[-4:]
+
+
+def _update_dotenv(env_path: Path, updates: dict[str, str]) -> None:
+    """把 updates 里的 key=value 写回 .env 文件;已存在的 key 改值,不存在的追加。
+    不改变其他行、不重排、保留注释和空行。"""
+    import os as _os2
+    lines = env_path.read_text("utf-8").splitlines() if env_path.exists() else []
+    updated: set[str] = set()
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            new_lines.append(line)
+            continue
+        if stripped.startswith("export "):
+            prefix, rest = "export ", stripped[len("export "):]
+        else:
+            prefix, rest = "", stripped
+        if "=" not in rest:
+            new_lines.append(line)
+            continue
+        key = rest.split("=", 1)[0].strip()
+        if key in updates:
+            val = updates[key]
+            new_lines.append(f"{prefix}{key}={val}")
+            updated.add(key)
+        else:
+            new_lines.append(line)
+    # 追加未更新过的新 key
+    for key, val in updates.items():
+        if key not in updated:
+            new_lines.append(f"{key}={val}")
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.write_text("\n".join(new_lines) + "\n", "utf-8")
+    # 同步到当前进程环境
+    for key, val in updates.items():
+        _os2.environ[key] = val
+
+
+def _custom_providers_path(cfg: Config) -> Path:
+    return cfg.home / "custom_providers.json"
+
+
+def _load_custom_providers(cfg: Config) -> list[dict]:
+    """加载用户通过控制台添加的自定义 provider;文件不存在返回 []。"""
+    import json as _json
+    p = _custom_providers_path(cfg)
+    if not p.exists():
+        return []
+    try:
+        data = _json.loads(p.read_text("utf-8"))
+        return data.get("providers", []) if isinstance(data, dict) else []
+    except (ValueError, KeyError):
+        return []
+
+
+def _save_custom_providers(cfg: Config, providers: list[dict]) -> None:
+    """保存自定义 provider 列表到 JSON 文件。"""
+    import json as _json
+    p = _custom_providers_path(cfg)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(_json.dumps({"providers": providers}, ensure_ascii=False, indent=2), "utf-8")
+
+
+def _all_provider_ids(cfg: Config) -> list[str]:
+    """内置 + 自定义 provider id 合集。"""
+    custom = [cp["id"] for cp in _load_custom_providers(cfg)]
+    return _AGENT_PROVIDERS + custom
 
 
 def _providers_info(cfg: Config) -> list[dict]:
@@ -57,7 +136,21 @@ def _providers_info(cfg: Config) -> list[dict]:
         except Exception as e:  # noqa: BLE001
             ok, why = False, str(e)
         out.append({"id": pid, "available": ok, "reason": why,
-                    "default": pid == cfg.agent.provider})
+                    "default": pid == cfg.agent.provider, "builtin": True})
+
+    # 自定义 provider
+    for cp in _load_custom_providers(cfg):
+        pid = cp["id"]
+        try:
+            prov = get_chat_provider(replace(cfg.agent,
+                provider=pid, custom_providers={pid: cp}))
+            ok, why = prov.available()
+        except Exception as e:
+            ok, why = False, str(e)
+        out.append({"id": pid, "available": ok, "reason": why,
+                    "default": pid == cfg.agent.provider, "builtin": False,
+                    "name": cp.get("name", pid), "base_url": cp.get("base_url", ""),
+                    "default_model": cp.get("default_model", "")})
     return out
 
 
@@ -152,7 +245,11 @@ def make_handler(cfg: Config):
             if u.path == "/api/agent/providers":
                 return self._json({"providers": _providers_info(cfg),
                                    "chunk_model": cfg.agent.chunk_model,
-                                   "extract_model": cfg.agent.extract_model})
+                                   "extract_model": cfg.agent.extract_model,
+                                   "chunk_provider": cfg.agent.provider_for("chunk"),
+                                   "extract_provider": cfg.agent.provider_for("extract")})
+            if u.path == "/api/agent/config":
+                return self._api_agent_config()
             if u.path == "/api/segments":
                 return self._api_get_segments(parse_qs(u.query))
             if u.path == "/api/staging":
@@ -195,6 +292,113 @@ def make_handler(cfg: Config):
             if nd is None:
                 return self._json({"error": f"无此节点: {label}"}, 404)
             self._json(nd)
+
+        def _api_agent_config(self) -> None:
+            """控制台:各 agent 角色的 provider/模型/key 状态(密文掩码,绝不回明文)。
+            每次调用重新同步 .env,确保手动编辑 .env 后 key 状态即时刷新。"""
+            import os as _os2
+            from memory_system.env import load_dotenv
+
+            # 重新加载 .env,让手动编辑的 key 即时生效(override=True 覆盖已有值)
+            load_dotenv(cfg.home / ".env", override=True)
+            # 同步更新内存 cfg 的 custom_providers(可能刚通过控制台添加/删除)
+            from memory_system.config import _load_custom_providers_map
+            new_cp = _load_custom_providers_map(cfg.home)
+            if new_cp != cfg.agent.custom_providers:
+                object.__setattr__(cfg, 'agent', replace(cfg.agent, custom_providers=new_cp))
+
+            agents = {}
+            for role, default_model in [("chunk", cfg.agent.chunk_model),
+                                         ("extract", cfg.agent.extract_model)]:
+                effective_provider = cfg.agent.provider_for(role)
+                agents[role] = {
+                    "provider": effective_provider,
+                    "model": default_model,
+                    "providers": _providers_info(cfg),
+                }
+
+            # embedding key 状态
+            emb = cfg.embedding
+            emb_key = _os2.environ.get(emb.api_key_env, "").strip()
+            embedding = {
+                "provider": emb.provider,
+                "model": emb.model,
+                "dim": emb.dim,
+                "key_env": emb.api_key_env,
+                "key_present": bool(emb_key),
+                "key_masked": _mask_key(emb.api_key_env),
+            }
+
+            # 各 provider 的 key 状态(claude_cli 不走 key,fake 无 key)
+            agent_keys = [
+                {"id": "claude_cli", "key_env": None, "key_present": None, "key_masked": None},
+                {"id": "fake", "key_env": None, "key_present": None, "key_masked": None},
+            ]
+            # 自定义 provider 的 key 状态
+            for cp in _load_custom_providers(cfg):
+                ak = _os2.environ.get(cp["api_key_env"], "").strip()
+                agent_keys.append({
+                    "id": cp["id"],
+                    "key_env": cp["api_key_env"],
+                    "key_present": bool(ak and ak != "[this is your api key]"),
+                    "key_masked": _mask_key(cp["api_key_env"]),
+                })
+
+            self._json({
+                "agents": agents,
+                "embedding": embedding,
+                "agent_keys": agent_keys,
+                "timeout_s": cfg.agent.timeout_s,
+                "max_retries": cfg.agent.max_retries,
+            })
+
+        def _api_agent_config_post(self, body) -> None:
+            """更新 agent 配置:写入 ~/.memory_system/.env,同步当前进程环境。
+            provider 切换影响所有 agent 角色(共享);model 可按 role 各自设。
+            变更需重启服务才能在后续 API 调用中全局生效(Config 启动时已冻结)。"""
+            role = str(body.get("role", "")).strip()
+            if role not in ("chunk", "extract"):
+                return self._json({"error": "role 必须是 chunk 或 extract"}, 400)
+
+            updates: dict[str, str] = {}
+            # provider 切换(按 role 独立,不再共享)
+            provider = str(body.get("provider", "")).strip()
+            if provider and provider in _all_provider_ids(cfg):
+                prov_key = {"chunk": "MEMORY_AGENT_CHUNK_PROVIDER",
+                            "extract": "MEMORY_AGENT_EXTRACT_PROVIDER"}[role]
+                updates[prov_key] = provider
+
+            # model 切换(按 role)
+            model = str(body.get("model", "")).strip()
+            if model:
+                model_key = {"chunk": "MEMORY_AGENT_CHUNK_MODEL",
+                             "extract": "MEMORY_AGENT_EXTRACT_MODEL"}[role]
+                updates[model_key] = model
+
+            if not updates:
+                return self._json({"error": "缺少 provider 或 model"}, 400)
+
+            env_path = cfg.home / ".env"
+            try:
+                _update_dotenv(env_path, updates)
+            except OSError as e:
+                return self._json({"error": f"写入 .env 失败: {e}"}, 500)
+
+            # 更新内存中的 cfg(绕过 frozen),让 GET /api/agent/config 即时反映变更
+            new_agent = cfg.agent
+            if "MEMORY_AGENT_CHUNK_PROVIDER" in updates:
+                new_agent = replace(new_agent, chunk_provider=updates["MEMORY_AGENT_CHUNK_PROVIDER"])
+            if "MEMORY_AGENT_EXTRACT_PROVIDER" in updates:
+                new_agent = replace(new_agent, extract_provider=updates["MEMORY_AGENT_EXTRACT_PROVIDER"])
+            if "MEMORY_AGENT_CHUNK_MODEL" in updates:
+                new_agent = replace(new_agent, chunk_model=updates["MEMORY_AGENT_CHUNK_MODEL"])
+            if "MEMORY_AGENT_EXTRACT_MODEL" in updates:
+                new_agent = replace(new_agent, extract_model=updates["MEMORY_AGENT_EXTRACT_MODEL"])
+            object.__setattr__(cfg, 'agent', new_agent)
+
+            self._json({"ok": True, "updated": updates,
+                        "restart_required": True,
+                        "hint": "provider/model 变更已写入 .env 并同步当前页面;已存在的 LLM 调用路径需重启服务才能全局生效"})
 
         def _api_get_staging(self, q) -> None:
             from memory_system import staging_store
@@ -331,6 +535,10 @@ def make_handler(cfg: Config):
                 "/api/archive": self._api_archive,
                 "/api/staging/edit": self._api_staging_edit,
                 "/api/staging/delete": self._api_staging_delete,
+                "/api/agent/test": self._api_agent_test,
+                "/api/agent/config": self._api_agent_config_post,
+                "/api/agent/providers": self._api_add_provider,
+                "/api/embedding/test": self._api_embedding_test,
             }
             handler = routes.get(u.path)
             if handler is None:
@@ -342,7 +550,176 @@ def make_handler(cfg: Config):
                 return self._json({"error": "请求体非 JSON"}, 400)
             return handler(body)
 
+        def do_DELETE(self) -> None:
+            u = urlparse(self.path)
+            if u.path == "/api/agent/providers":
+                qs = parse_qs(u.query)
+                pid = (qs.get("id") or [""])[0].strip()
+                return self._api_remove_provider(pid)
+            self._send(404, b"not found", "text/plain")
+
+        # ---- 自定义 provider 管理 ----
+        def _api_add_provider(self, body) -> None:
+            """添加一个自定义 OpenAI 兼容 provider。
+            自动生成 env var 名并写入占位 key 到 .env。"""
+            name = str(body.get("name", "")).strip()
+            base_url = str(body.get("base_url", "")).strip()
+            model = str(body.get("model", "")).strip()
+
+            if not name or not base_url:
+                return self._json({"error": "name 和 base_url 必填"}, 400)
+            if not base_url.startswith("https://") and not base_url.startswith("http://"):
+                return self._json({"error": "base_url 必须以 http:// 或 https:// 开头"}, 400)
+
+            # 校验:base_url 要是 API 端点(含 /v1 等版本路径),不是 Web 平台首页。
+            # OpenAI 兼容 API 的 chat 路径统一为 {base_url}/chat/completions。
+            import re as _re
+            _stripped = base_url.rstrip("/")
+            _has_api_ver = bool(_re.search(r"/v\d+", _stripped))
+            _hints: list[str] = []
+            if not _has_api_ver:
+                _hints.append(
+                    f"base_url 不含 /v1 等版本路径,实际请求将指向 "
+                    f"{_stripped}/chat/completions——多数 OpenAI 兼容 API 需要 /v1 前缀,"
+                    f"请确认这是正确的 API 端点而非 Web 控制台地址。"
+                    f"例如 DeepSeek 应为 https://api.deepseek.com/v1 而非 https://platform.deepseek.com"
+                )
+            # 常见平台域名的误用
+            _host = (_stripped.split("://", 1)[1] if "://" in _stripped else _stripped).split("/")[0]
+            if _host in ("platform.deepseek.com", "chat.deepseek.com", "platform.openai.com"):
+                _hints.append(
+                    f"{_host} 是 Web 平台而非 API 端点;DeepSeek API 为 api.deepseek.com/v1,"
+                    f"OpenAI API 为 api.openai.com/v1"
+                )
+            pid = "custom_" + _re.sub(r"[^a-z0-9_]", "_", name.lower().strip().replace(" ", "_"))
+            pid = _re.sub(r"_+", "_", pid).strip("_")
+            env_var = pid.upper() + "_API_KEY"
+
+            # 去重
+            existing = _load_custom_providers(cfg)
+            if any(p["id"] == pid for p in existing):
+                return self._json({"error": f"provider id {pid!r} 已存在"}, 409)
+
+            placeholder = "[this is your api key]"
+            cp = {
+                "id": pid,
+                "name": name,
+                "base_url": base_url.rstrip("/"),
+                "api_key_env": env_var,
+                "default_model": model or "",
+                "created_at": None,  # 略
+            }
+
+            # 写 .env:占位 key + 同步环境
+            _update_dotenv(cfg.home / ".env", {env_var: placeholder})
+
+            # 保存到 custom_providers.json
+            existing.append(cp)
+            _save_custom_providers(cfg, existing)
+
+            # 更新内存 cfg
+            new_cp_map = dict(cfg.agent.custom_providers)
+            new_cp_map[pid] = {"base_url": cp["base_url"], "api_key_env": env_var,
+                               "default_model": cp["default_model"]}
+            object.__setattr__(cfg, 'agent', replace(cfg.agent, custom_providers=new_cp_map))
+
+            self._json({
+                "ok": True,
+                "provider": cp,
+                "hint": f"Key 占位已写入 .env 的 {env_var}=[this is your api key];请到 ~/.memory_system/.env 替换为真实 key 后再测试连接",
+                "warnings": _hints if _hints else None,
+            })
+
+        def _api_remove_provider(self, pid: str) -> None:
+            """删除自定义 provider(内置 provider 不可删)。"""
+            if not pid:
+                return self._json({"error": "缺 id"}, 400)
+            if pid in _AGENT_PROVIDERS:
+                return self._json({"error": f"内置 provider {pid!r} 不可删除"}, 403)
+
+            existing = _load_custom_providers(cfg)
+            cp = next((p for p in existing if p["id"] == pid), None)
+            if not cp:
+                return self._json({"error": f"provider {pid!r} 不存在"}, 404)
+
+            # 不移除 .env 中的 key 变量(用户可能以后还要用);只删 JSON 条目
+            existing = [p for p in existing if p["id"] != pid]
+            _save_custom_providers(cfg, existing)
+
+            # 更新内存 cfg
+            new_cp_map = dict(cfg.agent.custom_providers)
+            new_cp_map.pop(pid, None)
+            object.__setattr__(cfg, 'agent', replace(cfg.agent, custom_providers=new_cp_map))
+
+            # 如果当前 provider 正是被删的,回退到默认
+            if cfg.agent.provider == pid:
+                _update_dotenv(cfg.home / ".env", {"MEMORY_AGENT_PROVIDER": "claude_cli"})
+                object.__setattr__(cfg, 'agent', replace(cfg.agent, provider="claude_cli"))
+
+            self._json({"ok": True, "removed": pid})
+
+        # ---- embedding 连接测试 ----
+        def _api_embedding_test(self, body) -> None:
+            """对 embedding 端点做一次最小探活:嵌单个短词,验证连通性和维度。"""
+            _ = body  # 无参数,用当前配置
+            try:
+                from memory_system.embedding import get_provider
+                prov = get_provider(cfg.embedding)
+                if cfg.embedding.provider == "fake":
+                    self._json({"ok": True, "detail": "fake embedding 始终可用"})
+                    return
+                # 实际调用
+                vec = prov.embed_one("test")
+                if not vec or not isinstance(vec, list):
+                    self._json({"ok": False, "detail": "返回空向量"})
+                    return
+                self._json({
+                    "ok": True,
+                    "detail": f"嵌入成功,维度={len(vec)},模型={cfg.embedding.model}",
+                    "dim": len(vec),
+                })
+            except Exception as e:
+                self._json({"ok": False, "detail": str(e)[:300]})
+
         # ---- S5 审核/归档 ----
+        def _api_agent_test(self, body) -> None:
+            """连接测试:对指定 provider 做一次极小探活(非实际 LLM 调用)。"""
+            pid = str(body.get("provider", "")).strip()
+            valid_ids = set(_all_provider_ids(cfg)) | {"deepseek", "openai_compat", "qwen"}
+            if not pid or pid not in valid_ids:
+                return self._json({"ok": False, "detail": f"未知 provider: {pid!r}"}, 400)
+            if pid in ("claude_cli",):
+                from memory_system.agent.claude_cli import ClaudeCliProvider
+                try:
+                    prov = ClaudeCliProvider()
+                    ok, why = prov.available()
+                except Exception as e:
+                    ok, why = False, str(e)
+            elif pid == "fake":
+                from memory_system.agent.fake import FakeChatProvider
+                prov = FakeChatProvider()
+                ok, why = prov.available()
+            elif pid in ("deepseek", "openai_compat", "qwen"):
+                from memory_system.agent.openai_compat import OpenAICompatProvider
+                try:
+                    prov = OpenAICompatProvider(cfg.agent.base_url, cfg.agent.api_key_env)
+                    ok, why = prov.available()
+                except Exception as e:
+                    ok, why = False, str(e)
+            else:
+                # 自定义 provider
+                cp_list = _load_custom_providers(cfg)
+                cp = next((p for p in cp_list if p["id"] == pid), None)
+                if not cp:
+                    return self._json({"ok": False, "detail": f"自定义 provider 配置缺失: {pid!r}"}, 400)
+                from memory_system.agent.openai_compat import OpenAICompatProvider
+                try:
+                    prov = OpenAICompatProvider(cp["base_url"], cp["api_key_env"])
+                    ok, why = prov.available()
+                except Exception as e:
+                    ok, why = False, str(e)
+            self._json({"ok": ok, "detail": why})
+
         def _session_for_staging(self, body) -> str | None:
             """审核接口优先用 session_id;兼容旧前端传 path 的形状。"""
             sid = _valid_session_id(body.get("session_id"))
@@ -451,7 +828,7 @@ def make_handler(cfg: Config):
                 return self._json({"error": "清洗后 0 回合,无可切内容"}, 400)
             mtime = path.stat().st_mtime
 
-            agent_cfg = cfg.agent
+            agent_cfg = _replace(cfg.agent, provider=cfg.agent.provider_for("chunk"))
             if body.get("provider"):
                 agent_cfg = _replace(agent_cfg, provider=body["provider"])
             model = body.get("model") or agent_cfg.chunk_model
@@ -504,7 +881,7 @@ def make_handler(cfg: Config):
                 if not segments:
                     return self._json({"error": f"无匹配 seg_id: {sorted(want)}"}, 400)
 
-            agent_cfg = cfg.agent
+            agent_cfg = _replace(cfg.agent, provider=cfg.agent.provider_for("extract"))
             if body.get("provider"):
                 agent_cfg = _replace(agent_cfg, provider=body["provider"])
             model = body.get("model") or agent_cfg.extract_model

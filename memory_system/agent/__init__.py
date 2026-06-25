@@ -25,7 +25,14 @@ def get_chat_provider(cfg: AgentConfig) -> ChatProvider:
     if cfg.provider in ("deepseek", "openai_compat", "qwen"):
         from memory_system.agent.openai_compat import OpenAICompatProvider
 
-        return OpenAICompatProvider(cfg.base_url, cfg.api_key_env)
+        return OpenAICompatProvider(cfg.base_url or "https://api.deepseek.com/v1",
+                                    cfg.api_key_env or "DEEPSEEK_API_KEY")
+    # 自定义 provider(控制台动态添加的 OpenAI 兼容端点)
+    cp = cfg.custom_providers.get(cfg.provider)
+    if cp:
+        from memory_system.agent.openai_compat import OpenAICompatProvider
+
+        return OpenAICompatProvider(cp["base_url"], cp["api_key_env"])
     raise ValueError(f"未知 agent provider: {cfg.provider!r}")
 
 

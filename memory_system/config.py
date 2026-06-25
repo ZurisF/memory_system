@@ -8,7 +8,7 @@ key 永远从环境变量读,绝不落盘。
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 
@@ -55,22 +55,39 @@ class AgentConfig:
     provider=claude_cli 走本机 `claude -p`(复用订阅、不烧 key);deepseek/qwen 等
     OpenAI 兼容口走 urllib;fake 离线确定性供测试。按角色定默认模型:切块结构活用
     sonnet 省钱,提取用 opus。key 永远从环境读,绝不落盘、绝不经前端。
+
+    custom_providers: 用户通过控制台添加的自定义 OpenAI 兼容端点。
+    字典 key=provider_id, value={base_url, api_key_env, default_model}。
     """
 
-    provider: str = "claude_cli"
-    chunk_model: str = "sonnet"   # S3 切块默认(opus 太烧)
-    extract_model: str = "opus"   # S4 提取默认(当前最新 opus 为 4.8;别名自动指向最新)
-    # OpenAI 兼容后端(deepseek/qwen…)用;claude_cli/fake 不读这两项。
+    provider: str = "claude_cli"       # 默认 provider(切块/提取未单独设时回退)
+    chunk_provider: str = ""           # 切块专用 provider;空则回退到 provider
+    extract_provider: str = ""         # 提取专用 provider;空则回退到 provider
+    chunk_model: str = "sonnet"        # S3 切块默认(opus 太烧)
+    extract_model: str = "opus"        # S4 提取默认
+    # OpenAI 兼容后端(deepseek/qwen 等);claude_cli/fake 不读。
     base_url: str = "https://api.deepseek.com/v1"
     api_key_env: str = "DEEPSEEK_API_KEY"
     timeout_s: int = 90
     max_retries: int = 2          # 首次失败后再试的次数
+    custom_providers: dict = field(default_factory=dict)
+    # {provider_id: {base_url, api_key_env, default_model}},控制台动态添加
+
+    def provider_for(self, role: str) -> str:
+        """返回 role 的有效 provider:专用 > 默认。role ∈ {chunk, extract}。"""
+        if role == "chunk" and self.chunk_provider:
+            return self.chunk_provider
+        if role == "extract" and self.extract_provider:
+            return self.extract_provider
+        return self.provider
 
 
 def _agent_from_env() -> AgentConfig:
     d = AgentConfig()
     return AgentConfig(
         provider=os.environ.get("MEMORY_AGENT_PROVIDER", d.provider),
+        chunk_provider=os.environ.get("MEMORY_AGENT_CHUNK_PROVIDER", ""),
+        extract_provider=os.environ.get("MEMORY_AGENT_EXTRACT_PROVIDER", ""),
         chunk_model=os.environ.get("MEMORY_AGENT_CHUNK_MODEL", d.chunk_model),
         extract_model=os.environ.get("MEMORY_AGENT_EXTRACT_MODEL", d.extract_model),
         base_url=os.environ.get("MEMORY_AGENT_BASE_URL", d.base_url),
@@ -152,6 +169,21 @@ class Config:
         ]
 
 
+def _load_custom_providers_map(home: Path) -> dict:
+    """从 custom_providers.json 加载自定义 provider 映射(供 AgentConfig 使用)。"""
+    import json as _json
+    p = home / "custom_providers.json"
+    if not p.exists():
+        return {}
+    try:
+        data = _json.loads(p.read_text("utf-8"))
+        items = data.get("providers", []) if isinstance(data, dict) else []
+    except (ValueError, KeyError):
+        return {}
+    return {cp["id"]: {"base_url": cp["base_url"], "api_key_env": cp["api_key_env"],
+                       "default_model": cp.get("default_model", "")} for cp in items}
+
+
 def load_config() -> Config:
     # 先确定主目录,再从 主目录/.env 灌环境(已 export 的优先),最后读 embedding 配置。
     # MEMORY_SYSTEM_HOME 决定 .env 的位置,故不从 .env 取(鸡生蛋)。
@@ -159,4 +191,6 @@ def load_config() -> Config:
 
     home = _home()
     load_dotenv(home / ".env")
-    return Config(home=home, embedding=_embedding_from_env(), agent=_agent_from_env())
+    agent_cfg = _agent_from_env()
+    agent_cfg = replace(agent_cfg, custom_providers=_load_custom_providers_map(home))
+    return Config(home=home, embedding=_embedding_from_env(), agent=agent_cfg)

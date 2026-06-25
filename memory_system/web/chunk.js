@@ -30,6 +30,17 @@ function normSeg(s) {
     deletions: s.deletions || [], origin: s.origin || "edited" };
 }
 
+function showAlert(cls, msg) {
+  const box = $("#alerts");
+  const el = document.createElement("div");
+  el.className = "alert " + cls;
+  el.innerHTML = `<span style="display:flex;justify-content:space-between;align-items:flex-start">` +
+    `<span>${msg}</span>` +
+    `<button class="alert-close" title="关闭" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;line-height:1;padding:0 0 0 8px;flex:none">&times;</button></span>`;
+  box.appendChild(el);
+  el.querySelector(".alert-close").onclick = () => { el.remove(); };
+}
+
 function renderAlerts(d) {
   const box = $("#alerts");
   box.innerHTML = "";
@@ -37,10 +48,14 @@ function renderAlerts(d) {
     const last = d.retry[d.retry.length - 1];
     const el = document.createElement("div");
     el.className = "alert err";
-    el.innerHTML = `⚠ 切块失败 ${d.retry.length} 次,最近:${esc(last.error).slice(0, 160)}` +
+    el.innerHTML = `<span style="display:flex;justify-content:space-between;align-items:flex-start">` +
+      `<span>⚠ 切块失败 ${d.retry.length} 次,最近:${esc(last.error).slice(0, 160)}</span>` +
+      `<button class="alert-close" title="关闭" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;line-height:1;padding:0 0 0 8px;flex:none">&times;</button></span>` +
       `<div class="row" style="margin-top:6px"><button id="retry-btn">重试切块</button></div>`;
     box.appendChild(el);
-    $("#retry-btn").onclick = runChunk;
+    el.querySelector(".alert-close").onclick = () => { el.remove(); };
+    const retry = el.querySelector("#retry-btn");
+    if (retry) retry.onclick = runChunk;
   }
 }
 
@@ -288,16 +303,19 @@ async function runChunk() {
   } catch (e) { toast("请求失败: " + e, true); btn.disabled = false; return; }
 
   if (d.kind === "oversized") {
-    $("#alerts").innerHTML = `<div class="alert warn">⚠ 对话过大(${d.chars} 字符 > ${d.limit})。` +
-      `请用"选中回合 → 建段"先人工粗分成几块,再逐块切。绝不静默截断。</div>`;
+    showAlert("warn", `⚠ 对话过大(${d.chars} 字符 > ${d.limit})。` +
+      `请用"选中回合 → 建段"先人工粗分成几块,再逐块切。绝不静默截断。`);
     $("#seg-status").textContent = "超大,需人工粗分";
-  } else if (d.kind === "failed" || d.kind === "unavailable") {
+  } else if (d.kind === "unavailable") {
+    showAlert("err", `⚠ provider 不可用: ${esc(d.error)}。<br>请到「控制台」检查 key 是否已配置、连接测试是否通过。`);
+    $("#seg-status").textContent = d.error;
+  } else if (d.kind === "failed") {
     SEGS = (d.segments || []).map(normSeg);
     renderAlerts(d);
-    $("#seg-status").textContent = d.kind === "unavailable" ? d.error : "切块失败(见上方告警)";
-    if (d.kind === "unavailable") toast(d.error, true);
+    $("#seg-status").textContent = "切块失败(见上方告警)";
   } else if (d.error) {
-    toast(d.error, true); $("#seg-status").textContent = d.error;
+    showAlert("err", `⚠ ${esc(d.error)}`);
+    $("#seg-status").textContent = d.error;
   } else {
     SEGS = (d.segments || []).map(normSeg);
     renderAlerts(d);

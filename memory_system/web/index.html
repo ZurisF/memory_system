@@ -110,7 +110,20 @@
   </section>
 
   <section id="view-console" class="view" hidden>
-    <div class="console-stub">控制台 · 下一轮做(agent 配置 / key 状态(密文) / 连接测试)</div>
+    <div class="console-wrap">
+      <div class="pn-head" style="background:transparent;padding-left:0">Agent 配置</div>
+
+      <div id="cfg-agents"></div>
+
+      <div style="margin-top:20px"></div>
+      <div class="pn-head" style="background:transparent;padding-left:0">Embedding</div>
+
+      <div id="cfg-embedding"></div>
+
+      <div id="cfg-note" class="cfg-note">
+        Key 不可在此填写。请在 <code>~/.memory_system/.env</code> 配置对应环境变量，保存后回此页点击连接测试。
+      </div>
+    </div>
   </section>
 
   <div id="toast"></div>
@@ -121,5 +134,6 @@
   <script src="/chunk.js"></script>
   <script src="/app.js"></script>
   <script src="/view.js"></script>
+  <script src="/console.js"></script>
 </body>
 </html>

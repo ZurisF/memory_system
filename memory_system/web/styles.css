@@ -1,6 +1,7 @@
   :root { --bg:#1a1b1e; --panel:#232529; --line:#33363c; --fg:#dfe1e5;
           --muted:#8a8f98; --me:#7aa2f7; --claude:#9ece6a; --warn:#e0af68;
-          --err:#f7768e; --done:#565a63; --sel:#2d3f5e; }
+          --err:#f7768e; --done:#565a63; --sel:#2d3f5e; --r:6px;
+          --mono:ui-monospace,"SF Mono","Cascadia Mono",monospace; }
   * { box-sizing:border-box; }
   body { margin:0; font:14px/1.6 -apple-system,system-ui,"PingFang SC",sans-serif;
          background:var(--bg); color:var(--fg); height:100vh;
@@ -280,7 +281,29 @@
   #topnav .nav-btn.active { background:var(--panel); color:var(--fg); border-color:var(--line); }
   .view { flex:1; min-height:0; display:flex; flex-direction:column; }
   .view[hidden] { display:none; }
+  /* ── console ── */
+  .console-wrap { padding:16px 20px; max-width:860px; }
   .console-stub { color:var(--muted); padding:40px; font-size:13px; }
+
+  .cfg { border:1px solid var(--line); border-radius:var(--r); background:var(--panel); overflow:hidden; margin-bottom:12px; }
+  .cfg-head { display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .cfg-name { font-weight:600; font-size:13px; }
+  .cfg-role { font-size:11px; color:var(--muted); }
+  .cfg-meta { font-size:11px; color:var(--muted); margin-left:auto; }
+  .cfg-dot { width:7px; height:7px; border-radius:50%; margin-left:auto; flex-shrink:0; }
+  .cfg-dot.on { background:var(--claude); }
+  .cfg-dot.off { background:var(--err); }
+  .cfg-body { padding:12px 16px; }
+  .cfg-row { display:flex; align-items:center; gap:12px; padding:5px 0; font-size:12px; }
+  .cfg-k { color:var(--muted); width:110px; flex-shrink:0; }
+  .cfg-v { color:var(--fg); font:12px/1.5 var(--mono); }
+  .cfg-v.mask { color:var(--muted); }
+  .cfg-foot { padding:10px 16px; border-top:1px solid var(--line); display:flex; gap:8px; align-items:center; }
+  .cfg-note { font-size:11px; color:var(--muted); margin:12px 0 8px; line-height:1.5; }
+  .cfg-note code { color:var(--me); font:11px var(--mono); }
+  .cfg .badge { display:inline-block; font-size:10px; font-weight:500; padding:1px 6px; border-radius:8px; margin-left:8px; }
+  .cfg .badge.ok { background:rgba(158,206,106,.12); color:var(--claude); }
+  .cfg .badge.no { background:rgba(247,119,142,.10); color:var(--err); }
 
   /* ── 查看侧 galaxy(容器内定位,不用 fixed 以免盖顶栏)── */
   #view-graph { position:relative; overflow:hidden; background:#0c0d0f; }
