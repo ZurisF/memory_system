@@ -436,7 +436,7 @@ def cmd_index(cfg: Config, args: argparse.Namespace) -> int:
     emb_cfg = cfg.embedding if not args.provider else replace(cfg.embedding, provider=args.provider)
     provider = get_provider(emb_cfg)
     try:
-        rep = rebuild(cfg, provider)
+        rep = rebuild(cfg, provider, lock_meta=emb_cfg.provider != "fake")
     except Exception as e:  # noqa: BLE001
         log.error("rebuild 失败: %s", e)
         print(f"rebuild 失败: {e}")

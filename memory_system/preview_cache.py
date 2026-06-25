@@ -33,6 +33,7 @@ def get(cache_dir: Path, path: Path, *, mtime: float | None = None) -> CleanedTr
     cache_file.write_text(
         json.dumps(ct.to_dict(), ensure_ascii=False), encoding="utf-8"
     )
+    sweep_stale(cache_dir, path, mtime)
     return ct
 
 

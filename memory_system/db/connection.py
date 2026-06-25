@@ -17,6 +17,7 @@ def connect(db_path: Path, *, load_vec: bool = True) -> sqlite3.Connection:
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
     con.execute("PRAGMA journal_mode = WAL")
+    con.execute("PRAGMA busy_timeout = 5000")
     if load_vec:
         con.enable_load_extension(True)
         sqlite_vec.load(con)

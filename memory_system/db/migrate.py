@@ -47,27 +47,34 @@ def all_migrations() -> list[Migration]:
     return migs
 
 
-def current_version(con: sqlite3.Connection) -> int:
+def applied_versions(con: sqlite3.Connection) -> set[int]:
+    """返回 schema_migrations 里实际存在的版本集合(不靠 MAX 推断)。"""
     _ensure_bookkeeping(con)
-    row = con.execute("SELECT MAX(version) AS v FROM schema_migrations").fetchone()
-    return row["v"] or 0
+    rows = con.execute("SELECT version FROM schema_migrations").fetchall()
+    return {r["version"] for r in rows}
+
+
+def current_version(con: sqlite3.Connection) -> int:
+    """已应用的最大版本号;无迁移记录则 0。"""
+    vers = applied_versions(con)
+    return max(vers) if vers else 0
 
 
 def status(con: sqlite3.Connection) -> list[tuple[int, str, bool]]:
     """返回 [(version, name, applied?)],按版本升序。"""
-    cur = current_version(con)
-    return [(m.version, m.name, m.version <= cur) for m in all_migrations()]
+    applied = applied_versions(con)
+    return [(m.version, m.name, m.version in applied) for m in all_migrations()]
 
 
 def up(con: sqlite3.Connection, *, target: int | None = None) -> list[int]:
-    """应用所有 version > 当前 且 <= target 的迁移。返回新应用的版本列表。"""
+    """应用所有未应用且 version <= target 的迁移。返回新应用的版本列表。"""
     from datetime import datetime, timezone
 
     _ensure_bookkeeping(con)
-    cur = current_version(con)
-    applied: list[int] = []
+    applied = applied_versions(con)
+    new_applied: list[int] = []
     for m in all_migrations():
-        if m.version <= cur:
+        if m.version in applied:
             continue
         if target is not None and m.version > target:
             break
@@ -77,14 +84,13 @@ def up(con: sqlite3.Connection, *, target: int | None = None) -> list[int]:
             (m.version, m.name, datetime.now(timezone.utc).isoformat()),
         )
         con.commit()
-        applied.append(m.version)
-    return applied
+        new_applied.append(m.version)
+    return new_applied
 
 
 def down(con: sqlite3.Connection, *, steps: int = 1) -> list[int]:
     """回滚最近 steps 个迁移。返回被回滚的版本列表。"""
     _ensure_bookkeeping(con)
-    cur = current_version(con)
     by_version = {m.version: m for m in all_migrations()}
     rolled: list[int] = []
     applied_desc = [

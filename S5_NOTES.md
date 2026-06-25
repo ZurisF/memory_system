@@ -1,7 +1,7 @@
 # S5 注意事项
 
 > 用途:沉淀 S5 写入侧的长期语义、前端坑位和验收门。主交接只写下一步;S5 细节来这里查。
-> 当前状态:2026-06-24 写入侧 Phase 1 已收尾,下一步转查看侧 demo、控制台、三视图导航骨架。
+> 当前状态:2026-06-25 S5 Phase 1 已收尾。写入侧、查看侧只读、控制台、三视图导航全部就绪。下一步转编辑写回(editor.py + edit API)。
 
 ## 当前状态
 
@@ -12,10 +12,14 @@
   - `styles.css`:样式。
   - `state.js`:全局状态、localStorage、通用工具、`TPREVIEW` 预览缓存。
   - `transcripts.js`:左侧 transcript 列表、候选区、切段/蒸馏阶段切换。
-  - `chunk.js`:切段屏逻辑。
+  - `chunk.js`:切段屏逻辑、`showAlert`/`renderAlerts`、段操作。
   - `triage.js`:蒸馏/审核屏逻辑、段预览、五件套编辑。
-  - `api.js`:provider 加载、`postJSON`、`once(key, fn, btn)` 在途锁。
+  - `api.js`:provider 加载(按 role 选默认)、`postJSON`、`once(key, fn, btn)` 在途锁。
   - `app.js`:启动与事件绑定。
+  - `view.js`:三视图导航 + galaxy 力导向图(只读)。
+  - `console.js`:控制台(agent 配置/切换/自定义 provider/key 掩码/连接测试)。
+- 后端新增:
+  - `views.py`:查看侧只读查询(`list_memories`/`read_memory`/`read_node_detail`)。
 
 ## 删除语义
 
@@ -75,9 +79,37 @@ PY
 - 切段:打开 transcript、手动建段、保存、删段。
 - 蒸馏:段预览、提取、编辑五件套、确认/拒绝/删除、连点时在途锁生效。
 
-## 后续 S5 方向
+## 2026-06-25 工程债修复
 
-- 查看侧 demo API:`/api/memories`、`/api/memory`、`/api/node`、`/api/memory/edit`、`/api/node/edit`。
-- 控制台 API/UI:`/api/agent/config`、可选 `/api/agent/test`;key 只显示掩码,不进前端表单。
-- 顶部导航 + 三视图骨架:写入 / 查看 / 控制台。
-- 单开去噪对比、自动精炼 agent、galaxy 可视化留后续阶段。
+四项修复，全部后端，零前端波及。详见下方。S1–S5 引擎验证 + JS 语法 + NUL 检查全绿。
+
+### 1. SQLite `busy_timeout` — `db/connection.py:19`
+
+- **问题**:`connect()` 未设 `busy_timeout`。`server.py` 使用 `ThreadingHTTPServer`（每请求一个线程），GUI/CLI 并发写时偶发 `SQLITE_BUSY`（错误码 5），直接 500。
+- **修复**:加 `PRAGMA busy_timeout = 5000`（等待 5 秒而非立即失败）。
+
+### 2. 迁移器 `MAX(version)` 误判 — `db/migrate.py:50-87`
+
+- **问题**:`current_version()` 用 `SELECT MAX(version)` 判断当前版本；若 `schema_migrations` 里只有 `{version:1}` 和 `{version:3}`（002 那行丢了），`MAX` 返回 3，`status()`/`up()` 误判 002 已应用，跳过建核心表（episodes/nodes/episode_nodes/episode_vectors/episode_fts 全在 `m002_core.py`）。
+- **修复**:新增 `applied_versions()` → `SELECT version FROM schema_migrations` 返回实际行 `set[int]`；`status()` 和 `up()` 改为 `version in applied` 精确判断。顺手删了 `down()` 中未使用的 `cur = current_version(con)` 死代码。
+
+### 3. Fake provider 写锁 — `index.py:50-63,227-228` + `cli.py:439`
+
+- **问题**:`cmd_init` 在 `cfg.embedding.provider != "fake"` 时才写 meta 锁，但 `cmd_index rebuild` 没有同样的守卫。`index rebuild --provider fake` 会经 `assert_embeddable` 把 `model="fake"` 写入 meta 表，之后 DashScope 写入被永久拒绝（`provider.model != locked_model` → `ValueError`）。
+- **修复**:`assert_embeddable` 加 `lock_meta: bool = True` 参数；`lock_meta=False` 且锁缺失时跳过写锁（仅返回 provider 的 model/dim 供本次会话使用）。`rebuild` 透传；`cmd_index` 在 `emb_cfg.provider != "fake"` 时才传 `lock_meta=True`，对齐 `cmd_init` 行为。`archive.confirm_episode` 调用 `assert_embeddable` 时使用默认 `lock_meta=True`（不受影响）。
+
+### 4. `preview_cache.sweep_stale` 未接线 — `preview_cache.py:37`
+
+- **问题**:`sweep_stale` 函数定义好了（遍历某 jsonl 的旧 mtime 缓存文件，只留最新的，其余 unlink），但整个代码库没有任何调用方。transcript 文件每次 mtime 变化都经 `get()` 生成新缓存文件，`cache/jsonl_preview/` 无限增长。
+- **修复**:`get()` 在 cache miss → `clean()` → 写新缓存文件后，调 `sweep_stale(cache_dir, path, mtime)`，自动清掉同 jsonl 的旧 mtime 缓存。
+
+### 5. 边计算性能标记 — `views.py:85-90`
+
+- **问题**:当前共现边每次 `/api/memories` 请求都 O(E·K²) 实时计算（`itertools.combinations` 对所有 episode 的 node 两两配对）。非 bug，设计取舍——当前数据量无需物化表。
+- **处理**:在共现边计算处加了 `NOTICE` 注释，标注复杂度和未来 `edges` 缓存表方向。API 形状不变，以后改读缓存表即可。
+
+## 后续方向
+
+- **编辑写回(Phase 1 最后一公里)** :`editor.py` + `POST /api/memory/edit` + `POST /api/node/edit`;galaxy 面板编辑按钮接上(改 overview 须重嵌向量)。
+- **Phase 2**:自动精炼 agent + diff 红绿块、段拖拽排序（需先厘清语义）。
+- 单开去噪对比、物化 edges 缓存表留后续阶段。

@@ -82,7 +82,11 @@ def list_memories(cfg: Config, include_archived: bool = False) -> dict:
                 "episode_count": count_of.get(label, 0),
             })
 
-        # 共现边:同一 episode 的 label 两两连;via 累计该边的共享情景
+        # 共现边:同一 episode 的 label 两两连;via 累计该边的共享情景。
+        # NOTICE 当前为 O(E·K²) 实时计算(K=单 episode 平均 node 数,E=episode 总数),
+        # 每次 /api/memories 请求都重算。库规模增长后应建物化 edges 缓存表,
+        # 在 confirm_episode / index rebuild 时增量更新,API 形状不变。
+        # 详见 idea_v2 §17/§96–98 及 HANDOFF_NOTES.md。
         edge_via: dict[tuple[str, str], list[str]] = {}
         for eid, labels in ep_labels.items():
             for a, b in combinations(sorted(set(labels)), 2):

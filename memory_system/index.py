@@ -47,9 +47,13 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def assert_embeddable(con: sqlite3.Connection, provider: EmbeddingProvider) -> tuple[str, int]:
+def assert_embeddable(con: sqlite3.Connection, provider: EmbeddingProvider, *, lock_meta: bool = True) -> tuple[str, int]:
     """建锁或校验:meta 无锁则按 provider 落锁(bookkeeping-on-write,让 rebuild 删库后单命令自足);
-    有锁则校验 provider 的 model/dim 一致,不符即拒。返回 (model, dim)。"""
+    有锁则校验 provider 的 model/dim 一致,不符即拒。返回 (model, dim)。
+
+    lock_meta=False 时,锁缺失则跳过写锁(仅返回 provider 的 model/dim 供本次会话使用),
+    用于 fake provider 等不应持久化锁的场景,避免把真实 DB 锁成 fake。
+    """
     has_meta = con.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='meta'"
     ).fetchone()
@@ -59,6 +63,8 @@ def assert_embeddable(con: sqlite3.Connection, provider: EmbeddingProvider) -> t
     locked_model = meta.get("embedding_model")
     locked_dim = meta.get("embedding_dim")
     if locked_model is None or locked_dim is None:
+        if not lock_meta:
+            return provider.model, provider.dim
         # 锁缺失(如删库重建后):按当前 provider 落锁,记"vec 表里装的是什么"
         con.execute(
             "INSERT INTO meta(key,value) VALUES('embedding_model',?) "
@@ -216,11 +222,13 @@ def insert_episode(
     return cur.lastrowid
 
 
-def rebuild(cfg: Config, provider: EmbeddingProvider) -> RebuildReport:
+def rebuild(cfg: Config, provider: EmbeddingProvider, *, lock_meta: bool = True) -> RebuildReport:
     """从碎片全量重建 DB。DB 不存在则建库迁移;存在则清空内容后重灌。
 
     **fail-fast 原子**:所有可失败的工作(parse 碎片、联网重嵌)都在 `_clear` 之前
     做完;任一步抛错则 DB 内容原封不动,绝不留下半清空的库。
+
+    lock_meta=False 时,若 meta 锁缺失则不落锁(用于 fake provider,避免把真实 DB 锁成 fake)。
     """
     con = connect(cfg.db_path)
     try:
@@ -229,7 +237,7 @@ def rebuild(cfg: Config, provider: EmbeddingProvider) -> RebuildReport:
         # ---- 阶段一:碰 DB 内容之前,把会失败的事全做完 ----
         nodes = load_all_nodes(cfg.nodes_dir)        # 坏 node 碎片在此 fail-fast
         eps = load_all_episodes(cfg.episodes_dir)    # 坏 episode 碎片在此 fail-fast
-        model, dim = assert_embeddable(con, provider)  # 锁校验/落锁(不清内容)
+        model, dim = assert_embeddable(con, provider, lock_meta=lock_meta)  # 锁校验/落锁(不清内容)
         vectors = _embed_overviews(cfg, provider, eps, dim)  # 联网失败也在清库前抛
         # ---- 阶段二:全部成功,才动 DB 内容 ----
         _clear(con)
