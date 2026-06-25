@@ -7,6 +7,9 @@ API:
   GET  /api/agent/providers        列可用 agent 后端(claude_cli/deepseek/fake)
   GET  /api/segments?path=...      取该 transcript 的切块工作态(段/agent/retry)
   GET  /api/staging?path=...       取该 transcript 的提取工作态(staging 五件套/retry)
+  GET  /api/memories               查看侧列表:active episodes/nodes/膜/共现 edges(无 uuid/向量/source_text)
+  GET  /api/memory?public_id=...   单条 episode 详情(五件套 + source_text + 所属 nodes)
+  GET  /api/node?label=...         node 详情 + 挂载 active episodes
   POST /api/select   {path, session_id, turn_idxs}  登记选段为已处理
   POST /api/chunk    {path, provider?, model?}      调切块 agent,落工作文件
   POST /api/segments {path, segments}               存人工编辑后的段(uuid 服务端重算)
@@ -156,7 +159,42 @@ def make_handler(cfg: Config):
                 return self._api_get_staging(parse_qs(u.query))
             if u.path == "/api/staging/all":
                 return self._api_staging_all()
+            if u.path == "/api/memories":
+                return self._api_memories(parse_qs(u.query))
+            if u.path == "/api/memory":
+                return self._api_memory(parse_qs(u.query))
+            if u.path == "/api/node":
+                return self._api_node(parse_qs(u.query))
             self._send(404, b"not found", "text/plain")
+
+        # ---- 查看侧只读 ----
+        def _api_memories(self, q) -> None:
+            from memory_system import views
+
+            inc = (q.get("include_archived") or ["0"])[0] in ("1", "true", "yes")
+            self._json(views.list_memories(cfg, include_archived=inc))
+
+        def _api_memory(self, q) -> None:
+            from memory_system import views
+
+            pub = (q.get("public_id") or [""])[0].strip()
+            if not pub:
+                return self._json({"error": "缺 public_id"}, 400)
+            mem = views.read_memory(cfg, pub)
+            if mem is None:
+                return self._json({"error": f"无此条目: {pub}"}, 404)
+            self._json(mem)
+
+        def _api_node(self, q) -> None:
+            from memory_system import views
+
+            label = (q.get("label") or [""])[0]
+            if not label.strip():
+                return self._json({"error": "缺 label"}, 400)
+            nd = views.read_node_detail(cfg, label)
+            if nd is None:
+                return self._json({"error": f"无此节点: {label}"}, 404)
+            self._json(nd)
 
         def _api_get_staging(self, q) -> None:
             from memory_system import staging_store

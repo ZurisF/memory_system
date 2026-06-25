@@ -51,15 +51,18 @@ memory-system archive ep_a1b2c3d4          # 审核(S5):active 碎片降级为 a
 > `index rebuild` 用真 provider(dashscope)会对所有 episode overview 联网重嵌、耗额度;
 > 测试用 `--provider fake`。
 
-## 前端(GUI 至 S3 切块;S5 富审核界面待建)
+## 前端
 
 `memory-system serve` 起的是**零依赖**本地前端(标准库 http.server + 原生 HTML/JS)。
 当前 GUI:列 transcript(已自动隐藏 `/clear` 空壳等空会话)、清洗预览、选回合标「已处理」、
-切块(运行 agent / 并分移边界 / 手动建段 / 标删 / 保存)。S4 提取与 S5 审核归档当前走 CLI/API,
-**S5 富审核界面(按父 jsonl 聚类、五件套编辑、单开去噪对比、批量归档)是下一步前端工作**。
+切块(运行 agent / 并分移边界 / 手动建段 / 标删 / 保存),以及 S5 写入侧「蒸馏」审核:
+按父 jsonl 聚类、段预览、五件套编辑、提取、确认/拒绝/删除、批量操作。
+
+前端文件在 `memory_system/web/`,仍是零构建静态资源;S5 细节见 `S5_NOTES.md`。
 
 ## 阶段
 
 当前:**Phase 1 / S0–S5 引擎全绿**(S5 第一段「入库闭环」:staging→active 碎片 + 增量入库 + node 别名
-合并,`verify_s1`~`verify_s5` 全过)。下一步:S5 富审核 GUI,然后 S6 检索模块。
+合并,`verify_s1`~`verify_s5` 全过;S5 写入侧 GUI 已可用)。下一步:S5 查看侧 demo、控制台和三视图导航,
+然后 S6 检索模块。
 逐步通过门见 `phase1_build.md`。

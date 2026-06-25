@@ -268,3 +268,67 @@
   .ep-editor .acts button.primary { background:var(--claude); color:#10131a; border:0; font-weight:600; }
   .ep-editor .acts button.danger { border-color:var(--err); color:var(--err); }
   .ep-editor .acts button:disabled { opacity:.5; cursor:default; }
+
+  /* ── 三视图导航 ── */
+  #topnav { flex:none; display:flex; gap:4px; align-items:center; padding:6px 14px;
+         border-bottom:1px solid var(--line); background:#15161a; }
+  #topnav .brand { font-size:12px; color:var(--muted); font-weight:600;
+         letter-spacing:.5px; margin-right:10px; }
+  #topnav .nav-btn { background:transparent; color:var(--muted); border:1px solid transparent;
+         border-radius:6px; padding:4px 14px; font:13px inherit; cursor:pointer; }
+  #topnav .nav-btn:hover { color:var(--fg); }
+  #topnav .nav-btn.active { background:var(--panel); color:var(--fg); border-color:var(--line); }
+  .view { flex:1; min-height:0; display:flex; flex-direction:column; }
+  .view[hidden] { display:none; }
+  .console-stub { color:var(--muted); padding:40px; font-size:13px; }
+
+  /* ── 查看侧 galaxy(容器内定位,不用 fixed 以免盖顶栏)── */
+  #view-graph { position:relative; overflow:hidden; background:#0c0d0f; }
+  #g-canvas { display:block; width:100%; height:100%; cursor:grab; }
+  #g-canvas:active { cursor:grabbing; }
+  .g-empty { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+         color:#5a5e66; font-size:13px; pointer-events:none; }
+  #g-panel { position:absolute; top:0; right:0; width:340px; height:100%;
+         background:var(--panel); border-left:1px solid var(--line);
+         transform:translateX(100%); transition:transform .22s ease-out;
+         overflow-y:auto; z-index:10; }
+  #g-panel.open { transform:translateX(0); }
+  .gp-close { position:absolute; top:10px; right:12px; background:none; border:none;
+         color:var(--muted); font-size:18px; cursor:pointer; padding:4px 8px; border-radius:4px; }
+  .gp-close:hover { color:var(--fg); background:var(--line); }
+  .gp-head { padding:16px 18px 12px; border-bottom:1px solid var(--line); }
+  .gp-label { font-size:16px; font-weight:600; margin-bottom:2px; word-break:break-word; }
+  .gp-type { font-size:11px; color:var(--muted); }
+  .gp-body { padding:14px 18px; }
+  .gp-lbl { font:600 10px/1 inherit; text-transform:uppercase; letter-spacing:.7px;
+         color:#5a5e66; margin:16px 0 6px; }
+  .gp-lbl:first-child { margin-top:0; }
+  .gp-val { font-size:13px; line-height:1.55; color:var(--fg); white-space:pre-wrap; }
+  .gp-mono { font:12px/1.6 ui-monospace,monospace; white-space:pre-wrap; background:#0c0d0f;
+         border:1px solid var(--line); border-radius:6px; padding:10px 12px;
+         max-height:240px; overflow-y:auto; }
+  .gp-chips { display:flex; flex-wrap:wrap; gap:4px; margin:4px 0; }
+  .gp-chip { font-size:11px; background:var(--line); border-radius:10px; padding:2px 8px;
+         color:var(--muted); }
+  .gp-ep { border:1px solid var(--line); border-radius:6px; padding:8px 10px; margin:6px 0;
+         cursor:pointer; transition:background .1s; }
+  .gp-ep:hover { background:#2a2d33; }
+  .gp-ep .ov { font-size:12px; margin-top:2px; color:var(--muted); }
+  .gp-ep .id { font:500 11px ui-monospace,monospace; color:var(--me); }
+  .gp-tier { font-size:10px; padding:1px 5px; border-radius:5px; font-weight:500; float:right; }
+  .gp-t1 { background:var(--line); color:var(--muted); }
+  .gp-t2 { background:rgba(224,175,104,.14); color:var(--warn); }
+  .gp-t3 { background:rgba(247,118,142,.12); color:var(--err); }
+  .gp-note { color:#5a5e66; font-size:11px; margin-top:16px; padding-top:12px;
+         border-top:1px solid var(--line); }
+  #g-zoom { position:absolute; bottom:14px; left:16px; font:11px ui-monospace,monospace;
+         color:#5a5e66; pointer-events:none; z-index:5; }
+  #g-zoom .lv { color:var(--muted); }
+  #g-help { position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+         font-size:11px; color:#464a52; pointer-events:none; z-index:5;
+         transition:opacity 1.2s; white-space:nowrap; }
+  #g-back { position:absolute; top:14px; left:16px; background:var(--panel); color:var(--fg);
+         border:1px solid var(--line); border-radius:5px; padding:5px 14px; font:12px inherit;
+         cursor:pointer; z-index:5; opacity:0; transition:opacity .2s; pointer-events:none; }
+  #g-back.show { opacity:1; pointer-events:auto; }
+  #g-back:hover { border-color:var(--me); }

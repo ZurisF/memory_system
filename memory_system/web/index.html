@@ -7,6 +7,14 @@
 <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+  <nav id="topnav">
+    <span class="brand">memory_system</span>
+    <button class="nav-btn active" data-view="ingest">写入</button>
+    <button class="nav-btn" data-view="graph">查看</button>
+    <button class="nav-btn" data-view="console">控制台</button>
+  </nav>
+
+  <section id="view-ingest" class="view">
   <div id="substage">
     <button data-stage="chunk" class="active">切段</button>
     <button data-stage="triage">蒸馏</button>
@@ -90,6 +98,20 @@
       </div>
     </div>
   </div>
+  </section><!-- /view-ingest -->
+
+  <section id="view-graph" class="view" hidden>
+    <canvas id="g-canvas"></canvas>
+    <div id="g-empty" class="g-empty" hidden>还没有已归档的记忆 —— 在「写入」侧确认入库后回来看。</div>
+    <div id="g-panel"><button class="gp-close" id="gp-close">&times;</button><div id="gp-content"></div></div>
+    <div id="g-zoom"><span class="lv">1.0x</span> · galaxy</div>
+    <button id="g-back">← 全景</button>
+    <div id="g-help">滚轮缩放 · 拖拽平移 · 点节点聚焦 · 点条目看详情</div>
+  </section>
+
+  <section id="view-console" class="view" hidden>
+    <div class="console-stub">控制台 · 下一轮做(agent 配置 / key 状态(密文) / 连接测试)</div>
+  </section>
 
   <div id="toast"></div>
   <script src="/state.js"></script>
@@ -98,5 +120,6 @@
   <script src="/api.js"></script>
   <script src="/chunk.js"></script>
   <script src="/app.js"></script>
+  <script src="/view.js"></script>
 </body>
 </html>
