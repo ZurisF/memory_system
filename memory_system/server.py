@@ -42,8 +42,9 @@ _STATIC_TYPES = {
     ".js": "application/javascript; charset=utf-8",
 }
 
-# 前端 provider 选择器可见的后端;available() 现报是否能用。
-_AGENT_PROVIDERS = ["claude_cli", "fake"]
+# 前端 provider 选择器可见的内置后端;available() 现报是否能用。
+_AGENT_PROVIDERS = ["claude_cli", "deepseek", "openai_compat", "qwen", "fake"]
+_PLACEHOLDER_KEY = "[this is your api key]"
 
 
 def _mask_key(env_var: str) -> str | None:
@@ -126,6 +127,8 @@ def _all_provider_ids(cfg: Config) -> list[str]:
 
 
 def _providers_info(cfg: Config) -> list[dict]:
+    import os as _os
+
     from memory_system.agent import get_chat_provider
 
     out = []
@@ -133,6 +136,9 @@ def _providers_info(cfg: Config) -> list[dict]:
         try:
             prov = get_chat_provider(replace(cfg.agent, provider=pid))
             ok, why = prov.available()
+            key_env = getattr(prov, "api_key_env", None)
+            if key_env and _os.environ.get(key_env, "").strip() == _PLACEHOLDER_KEY:
+                ok, why = False, f"环境变量 {key_env} 仍是占位 key"
         except Exception as e:  # noqa: BLE001
             ok, why = False, str(e)
         out.append({"id": pid, "available": ok, "reason": why,
@@ -145,6 +151,8 @@ def _providers_info(cfg: Config) -> list[dict]:
             prov = get_chat_provider(replace(cfg.agent,
                 provider=pid, custom_providers={pid: cp}))
             ok, why = prov.available()
+            if cp.get("api_key_env") and _os.environ.get(cp["api_key_env"], "").strip() == _PLACEHOLDER_KEY:
+                ok, why = False, f"环境变量 {cp['api_key_env']} 仍是占位 key"
         except Exception as e:
             ok, why = False, str(e)
         out.append({"id": pid, "available": ok, "reason": why,
@@ -330,8 +338,18 @@ def make_handler(cfg: Config):
             }
 
             # 各 provider 的 key 状态(claude_cli 不走 key,fake 无 key)
+            compat_key = _os2.environ.get(cfg.agent.api_key_env, "").strip()
             agent_keys = [
                 {"id": "claude_cli", "key_env": None, "key_present": None, "key_masked": None},
+                {"id": "deepseek", "key_env": cfg.agent.api_key_env,
+                 "key_present": bool(compat_key and compat_key != _PLACEHOLDER_KEY),
+                 "key_masked": _mask_key(cfg.agent.api_key_env)},
+                {"id": "openai_compat", "key_env": cfg.agent.api_key_env,
+                 "key_present": bool(compat_key and compat_key != _PLACEHOLDER_KEY),
+                 "key_masked": _mask_key(cfg.agent.api_key_env)},
+                {"id": "qwen", "key_env": cfg.agent.api_key_env,
+                 "key_present": bool(compat_key and compat_key != _PLACEHOLDER_KEY),
+                 "key_masked": _mask_key(cfg.agent.api_key_env)},
                 {"id": "fake", "key_env": None, "key_present": None, "key_masked": None},
             ]
             # 自定义 provider 的 key 状态
@@ -558,6 +576,17 @@ def make_handler(cfg: Config):
                 return self._api_remove_provider(pid)
             self._send(404, b"not found", "text/plain")
 
+        def do_PUT(self) -> None:
+            u = urlparse(self.path)
+            if u.path != "/api/agent/providers":
+                return self._send(404, b"not found", "text/plain")
+            n = int(self.headers.get("Content-Length", 0))
+            try:
+                body = json.loads(self.rfile.read(n) or b"{}")
+            except json.JSONDecodeError:
+                return self._json({"error": "请求体非 JSON"}, 400)
+            return self._api_update_provider(body)
+
         # ---- 自定义 provider 管理 ----
         def _api_add_provider(self, body) -> None:
             """添加一个自定义 OpenAI 兼容 provider。
@@ -630,6 +659,44 @@ def make_handler(cfg: Config):
                 "warnings": _hints if _hints else None,
             })
 
+        def _api_update_provider(self, body) -> None:
+            """修改自定义 OpenAI 兼容 provider 的显示名、base_url、默认模型。
+
+            id/api_key_env 不改,避免 .env key 变量被隐式迁移。
+            """
+            pid = str(body.get("id", "")).strip()
+            if not pid:
+                return self._json({"error": "缺 id"}, 400)
+            if pid in _AGENT_PROVIDERS:
+                return self._json({"error": f"内置 provider {pid!r} 不可修改"}, 403)
+
+            name = str(body.get("name", "")).strip()
+            base_url = str(body.get("base_url", "")).strip()
+            model = str(body.get("model", "")).strip()
+            if not name or not base_url:
+                return self._json({"error": "name 和 base_url 必填"}, 400)
+            if not base_url.startswith("https://") and not base_url.startswith("http://"):
+                return self._json({"error": "base_url 必须以 http:// 或 https:// 开头"}, 400)
+
+            existing = _load_custom_providers(cfg)
+            idx = next((i for i, p in enumerate(existing) if p.get("id") == pid), None)
+            if idx is None:
+                return self._json({"error": f"provider {pid!r} 不存在"}, 404)
+
+            cp = dict(existing[idx])
+            cp["name"] = name
+            cp["base_url"] = base_url.rstrip("/")
+            cp["default_model"] = model
+            existing[idx] = cp
+            _save_custom_providers(cfg, existing)
+
+            new_cp_map = dict(cfg.agent.custom_providers)
+            new_cp_map[pid] = {"base_url": cp["base_url"], "api_key_env": cp["api_key_env"],
+                               "default_model": cp.get("default_model", "")}
+            object.__setattr__(cfg, 'agent', replace(cfg.agent, custom_providers=new_cp_map))
+
+            self._json({"ok": True, "provider": cp})
+
         def _api_remove_provider(self, pid: str) -> None:
             """删除自定义 provider(内置 provider 不可删)。"""
             if not pid:
@@ -649,12 +716,23 @@ def make_handler(cfg: Config):
             # 更新内存 cfg
             new_cp_map = dict(cfg.agent.custom_providers)
             new_cp_map.pop(pid, None)
-            object.__setattr__(cfg, 'agent', replace(cfg.agent, custom_providers=new_cp_map))
+            new_agent = replace(cfg.agent, custom_providers=new_cp_map)
+            env_updates: dict[str, str] = {}
 
-            # 如果当前 provider 正是被删的,回退到默认
+            # 如果当前 provider 正是被删的,回退到默认。role 专用 provider 用空值
+            # 表示回落到全局默认;否则会留下悬空 provider id。
             if cfg.agent.provider == pid:
-                _update_dotenv(cfg.home / ".env", {"MEMORY_AGENT_PROVIDER": "claude_cli"})
-                object.__setattr__(cfg, 'agent', replace(cfg.agent, provider="claude_cli"))
+                env_updates["MEMORY_AGENT_PROVIDER"] = "claude_cli"
+                new_agent = replace(new_agent, provider="claude_cli")
+            if cfg.agent.chunk_provider == pid:
+                env_updates["MEMORY_AGENT_CHUNK_PROVIDER"] = ""
+                new_agent = replace(new_agent, chunk_provider="")
+            if cfg.agent.extract_provider == pid:
+                env_updates["MEMORY_AGENT_EXTRACT_PROVIDER"] = ""
+                new_agent = replace(new_agent, extract_provider="")
+            if env_updates:
+                _update_dotenv(cfg.home / ".env", env_updates)
+            object.__setattr__(cfg, 'agent', new_agent)
 
             self._json({"ok": True, "removed": pid})
 

@@ -6,6 +6,7 @@
  *   GET  /api/agent/config       — 全部配置(agent + embedding + key 掩码)
  *   POST /api/agent/config       — 保存 model/provider 切换 → .env
  *   POST /api/agent/providers    — 添加自定义 OpenAI 兼容 provider
+ *   PUT  /api/agent/providers    — 修改自定义 provider
  *   DELETE /api/agent/providers?id= — 删除自定义 provider
  *   POST /api/agent/test         — 连接测试(chat provider)
  *   POST /api/embedding/test     — 连接测试(embedding 端点)
@@ -47,7 +48,7 @@ var Console = (function () {
       return;
     }
 
-    agentsEl.innerHTML = renderAgentCards() + renderAddForm();
+    agentsEl.innerHTML = renderAgentCards() + renderCustomProviders() + renderAddForm();
     embEl.innerHTML = renderEmbedding();
     updateNote();
     bindAll();
@@ -84,7 +85,7 @@ var Console = (function () {
       html += '<div class="cfg-row">';
       html += '<span class="cfg-k">Provider</span>';
       html += '<select class="inp cfg-provider" style="width:auto;min-width:200px">';
-      providers.forEach(function (p) {
+      visibleProviders(providers, curProviderId).forEach(function (p) {
         var sel = p.id === curProviderId ? ' selected' : '';
         var dis = p.available ? '' : ' disabled';
         var label = p.id + (p.name ? ' (' + esc(p.name) + ')' : '') + (p.available ? '' : ' 不可用');
@@ -137,6 +138,54 @@ var Console = (function () {
     html += '<div class="cfg-foot"><button class="btn btn-s" disabled>连接测试</button></div>';
     html += '</div>';
 
+    return html;
+  }
+
+  function visibleProviders(providers, curProviderId) {
+    // 角色下拉只放可直接使用的 provider + 当前 provider(哪怕不可用,用于显示问题)。
+    // 大量不可用内置 provider 不再挤占下拉空间。
+    return (providers || []).filter(function (p) {
+      return p.available || p.id === curProviderId || p.builtin === false;
+    });
+  }
+
+  function allProviders() {
+    var seen = {};
+    var out = [];
+    ["chunk", "extract"].forEach(function (role) {
+      var ag = (CONFIG.agents || {})[role];
+      (ag && ag.providers || []).forEach(function (p) {
+        if (!seen[p.id]) { seen[p.id] = true; out.push(p); }
+      });
+    });
+    return out;
+  }
+
+  function renderCustomProviders() {
+    var custom = allProviders().filter(function (p) { return p.builtin === false; });
+    if (!custom.length) return "";
+    var html = '<div class="cfg" id="cfg-custom-providers">';
+    html += cardHead("自定义 Provider", "编辑 / 删除 OpenAI 兼容端点", true, String(custom.length));
+    html += '<div class="cfg-body">';
+    custom.forEach(function (p) {
+      html += '<div class="cfg-provider-row" data-provider-id="' + escAttr(p.id) + '">';
+      html += '<div class="cfg-provider-top"><span class="cfg-v">' + esc(p.id) + '</span>' +
+        '<span class="badge ' + (p.available ? 'ok' : 'no') + '">' + (p.available ? '可用' : '不可用') + '</span></div>';
+      html += '<div class="cfg-row"><span class="cfg-k">名称</span>' +
+        '<input type="text" class="inp prov-name" value="' + escAttr(p.name || p.id) + '"></div>';
+      html += '<div class="cfg-row"><span class="cfg-k">Base URL</span>' +
+        '<input type="text" class="inp prov-url" value="' + escAttr(p.base_url || "") + '"></div>';
+      html += '<div class="cfg-row"><span class="cfg-k">默认模型</span>' +
+        '<input type="text" class="inp prov-model" value="' + escAttr(p.default_model || "") + '"></div>';
+      html += '<div class="cfg-provider-actions">' +
+        '<button class="btn btn-s test-btn" data-provider="' + escAttr(p.id) + '">连接测试</button>' +
+        '<span class="test-status" style="font-size:11px;padding:0"></span>' +
+        '<button class="btn btn-s btn-ok edit-prov-btn">保存修改</button>' +
+        '<button class="btn btn-s btn-x del-prov-btn">删除</button>' +
+        '</div>';
+      html += '</div>';
+    });
+    html += '</div></div>';
     return html;
   }
 
@@ -433,28 +482,53 @@ var Console = (function () {
 
   /* ═══════════ 删除自定义 provider ═══════════ */
 
-  function bindDeleteButtons() {
-    document.querySelectorAll("#view-console .cfg .cfg-head .cfg-meta").forEach(function (el) {
-      if (el.textContent !== "自定义") return;
-      var card = el.closest(".cfg");
-      if (!card || card.querySelector(".del-prov-btn")) return;
-      var btn = document.createElement("button");
-      btn.className = "btn btn-s btn-x del-prov-btn";
-      btn.textContent = "删除";
-      btn.style.cssText = "margin-left:8px;font-size:10px;padding:2px 6px";
-      btn.addEventListener("click", function (e) {
-        e.stopPropagation();
-        deleteProvider(card);
+  function bindProviderManageButtons() {
+    document.querySelectorAll("#cfg-custom-providers .edit-prov-btn").forEach(function (btn) {
+      if (btn._boundEditProv) return;
+      btn._boundEditProv = true;
+      btn.addEventListener("click", function () {
+        var row = this.closest(".cfg-provider-row");
+        if (!row) return;
+        updateProvider(row, this);
       });
-      el.appendChild(btn);
+    });
+    document.querySelectorAll("#cfg-custom-providers .del-prov-btn").forEach(function (btn) {
+      if (btn._boundDelProv) return;
+      btn._boundDelProv = true;
+      btn.addEventListener("click", function () {
+        var row = this.closest(".cfg-provider-row");
+        if (!row) return;
+        deleteProvider(row);
+      });
     });
   }
 
-  async function deleteProvider(card) {
-    // 从 card 的 data-role 或 cfg-provider 找到 provider id
-    var sel = card.querySelector(".cfg-provider");
-    if (!sel) return;
-    var pid = sel.value;
+  async function updateProvider(row, btn) {
+    var pid = row.dataset.providerId;
+    var name = (row.querySelector(".prov-name") || {}).value || "";
+    var url = (row.querySelector(".prov-url") || {}).value || "";
+    var model = (row.querySelector(".prov-model") || {}).value || "";
+    if (!pid || !name.trim() || !url.trim()) { toast("名称和 Base URL 必填", true); return; }
+    await once("edit-provider:" + pid, async function () {
+      try {
+        var r = await fetch("/api/agent/providers", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: pid, name: name.trim(), base_url: url.trim(), model: model.trim() }),
+        });
+        var d = await r.json();
+        if (!d || d.error) { toast("修改失败: " + ((d && d.error) || "无响应"), true); return; }
+        toast("已修改 " + pid);
+        var fresh = await (await fetch("/api/agent/config")).json();
+        if (fresh && !fresh._error) { CONFIG = fresh; render(); }
+      } catch (e) {
+        toast("修改请求失败: " + String(e), true);
+      }
+    }, btn);
+  }
+
+  async function deleteProvider(row) {
+    var pid = row.dataset.providerId;
+    if (!pid) return;
     // 内置 provider 不可删(后端也会拒绝,但前端先判断)
     var found = findProviderInConfig(pid);
     if (found && found.builtin) { toast("内置 provider 不可删除", true); return; }
@@ -480,7 +554,7 @@ var Console = (function () {
     bindTestButtons();
     bindProviderChange();
     bindAddForm();
-    bindDeleteButtons();
+    bindProviderManageButtons();
   }
 
   /* ═══════════ 小工具 ═══════════ */

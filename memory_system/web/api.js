@@ -32,10 +32,18 @@ async function loadProviders() {
   CHUNK_MODEL = d.chunk_model || "sonnet";
   const fill = (sel, role) => {
     if (!sel) return;
-    const defProvider = role === "chunk" ? (d.chunk_provider || d.chunk_model) :
-                        role === "triage" ? (d.extract_provider || d.extract_model) : "";
+    const defProvider = role === "chunk" ? d.chunk_provider :
+                        role === "triage" ? d.extract_provider : "";
     sel.innerHTML = "";
-    PROVIDERS.forEach((p) => {
+    const def = PROVIDERS.find((p) => p.id === defProvider);
+    if (defProvider && (!def || !def.available)) {
+      const o = document.createElement("option");
+      o.value = "";
+      o.textContent = `后端默认: ${defProvider}${def ? " (不可用)" : " (未列出)"}`;
+      o.selected = true;
+      sel.appendChild(o);
+    }
+    PROVIDERS.filter((p) => p.available || p.id === defProvider || p.builtin === false).forEach((p) => {
       const o = document.createElement("option");
       o.value = p.id;
       o.textContent = `${p.id}${p.available ? "" : " (不可用)"}${p.id === defProvider ? " ✓默认" : ""}`;

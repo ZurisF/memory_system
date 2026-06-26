@@ -13,6 +13,8 @@ import urllib.request
 
 from memory_system.agent.base import ChatError, ChatProvider, ChatResult, ChatTimeout
 
+_PLACEHOLDER_KEY = "[this is your api key]"
+
 
 class OpenAICompatProvider(ChatProvider):
     id = "openai_compat"
@@ -22,14 +24,19 @@ class OpenAICompatProvider(ChatProvider):
         self.api_key_env = api_key_env
 
     def available(self) -> tuple[bool, str]:
-        if not os.environ.get(self.api_key_env):
+        key = os.environ.get(self.api_key_env, "").strip()
+        if not key:
             return False, f"环境变量 {self.api_key_env} 未设置"
+        if key == _PLACEHOLDER_KEY:
+            return False, f"环境变量 {self.api_key_env} 仍是占位 key"
         return True, self.base_url
 
     def _key(self) -> str:
-        key = os.environ.get(self.api_key_env)
+        key = os.environ.get(self.api_key_env, "").strip()
         if not key:
             raise ChatError(f"环境变量 {self.api_key_env} 未设置;key 只从环境读,不落盘。")
+        if key == _PLACEHOLDER_KEY:
+            raise ChatError(f"环境变量 {self.api_key_env} 仍是占位 key;请先替换为真实 key。")
         return key
 
     def complete(self, system: str, user: str, *, model: str, timeout: int) -> ChatResult:

@@ -240,7 +240,9 @@ def cmd_chunk(cfg: Config, args: argparse.Namespace) -> int:
         _print_segments(doc["segments"])
         return 0
 
-    agent_cfg = cfg.agent if not args.provider else replace(cfg.agent, provider=args.provider)
+    agent_cfg = replace(cfg.agent, provider=cfg.agent.provider_for("chunk"))
+    if args.provider:
+        agent_cfg = replace(agent_cfg, provider=args.provider)
     model = args.model or agent_cfg.chunk_model
     provider = get_chat_provider(agent_cfg)
     ok, why = provider.available()
@@ -308,7 +310,9 @@ def cmd_extract(cfg: Config, args: argparse.Namespace) -> int:
             print(f"无匹配 seg_id: {sorted(want)}")
             return 1
 
-    agent_cfg = cfg.agent if not args.provider else replace(cfg.agent, provider=args.provider)
+    agent_cfg = replace(cfg.agent, provider=cfg.agent.provider_for("extract"))
+    if args.provider:
+        agent_cfg = replace(agent_cfg, provider=args.provider)
     model = args.model or agent_cfg.extract_model
     provider = get_chat_provider(agent_cfg)
     ok, why = provider.available()
@@ -434,6 +438,9 @@ def cmd_index(cfg: Config, args: argparse.Namespace) -> int:
         return 1
     log = setup_logging(cfg.logs_dir)
     emb_cfg = cfg.embedding if not args.provider else replace(cfg.embedding, provider=args.provider)
+    if emb_cfg.provider == "fake" and cfg.embedding.provider != "fake":
+        print("拒绝在真实 embedding 配置下用 fake 重建索引;请使用临时 MEMORY_SYSTEM_HOME 跑离线测试。")
+        return 1
     provider = get_provider(emb_cfg)
     try:
         rep = rebuild(cfg, provider, lock_meta=emb_cfg.provider != "fake")
