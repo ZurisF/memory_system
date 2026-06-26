@@ -30,6 +30,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from memory_system import preview_cache, processed, segments_store
+from memory_system.agent import get_chat_provider, registry
 from memory_system.config import Config
 from memory_system.db import migrate
 from memory_system.db.connection import connect
@@ -42,20 +43,8 @@ _STATIC_TYPES = {
     ".js": "application/javascript; charset=utf-8",
 }
 
-# 前端 provider 选择器可见的内置后端;available() 现报是否能用。
-_AGENT_PROVIDERS = ["claude_cli", "deepseek", "openai_compat", "qwen", "fake"]
-_PLACEHOLDER_KEY = "[this is your api key]"
-
-
-def _mask_key(env_var: str) -> str | None:
-    """读取环境变量,返回掩码形式如 sk-****abcd;未配返回 None。"""
-    import os as _os
-    v = _os.environ.get(env_var, "").strip()
-    if not v:
-        return None
-    if len(v) <= 8:
-        return v[:2] + "****" + v[-2:]
-    return v[:3] + "****" + v[-4:]
+# provider 知识(内置目录 / 自定义增删 / 可用性 / key 状态 / 掩码 / 占位 key)统一在
+# memory_system.agent.registry,本文件只做 HTTP 编排。
 
 
 def _update_dotenv(env_path: Path, updates: dict[str, str]) -> None:
@@ -93,73 +82,6 @@ def _update_dotenv(env_path: Path, updates: dict[str, str]) -> None:
     # 同步到当前进程环境
     for key, val in updates.items():
         _os2.environ[key] = val
-
-
-def _custom_providers_path(cfg: Config) -> Path:
-    return cfg.home / "custom_providers.json"
-
-
-def _load_custom_providers(cfg: Config) -> list[dict]:
-    """加载用户通过控制台添加的自定义 provider;文件不存在返回 []。"""
-    import json as _json
-    p = _custom_providers_path(cfg)
-    if not p.exists():
-        return []
-    try:
-        data = _json.loads(p.read_text("utf-8"))
-        return data.get("providers", []) if isinstance(data, dict) else []
-    except (ValueError, KeyError):
-        return []
-
-
-def _save_custom_providers(cfg: Config, providers: list[dict]) -> None:
-    """保存自定义 provider 列表到 JSON 文件。"""
-    import json as _json
-    p = _custom_providers_path(cfg)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(_json.dumps({"providers": providers}, ensure_ascii=False, indent=2), "utf-8")
-
-
-def _all_provider_ids(cfg: Config) -> list[str]:
-    """内置 + 自定义 provider id 合集。"""
-    custom = [cp["id"] for cp in _load_custom_providers(cfg)]
-    return _AGENT_PROVIDERS + custom
-
-
-def _providers_info(cfg: Config) -> list[dict]:
-    import os as _os
-
-    from memory_system.agent import get_chat_provider
-
-    out = []
-    for pid in _AGENT_PROVIDERS:
-        try:
-            prov = get_chat_provider(replace(cfg.agent, provider=pid))
-            ok, why = prov.available()
-            key_env = getattr(prov, "api_key_env", None)
-            if key_env and _os.environ.get(key_env, "").strip() == _PLACEHOLDER_KEY:
-                ok, why = False, f"环境变量 {key_env} 仍是占位 key"
-        except Exception as e:  # noqa: BLE001
-            ok, why = False, str(e)
-        out.append({"id": pid, "available": ok, "reason": why,
-                    "default": pid == cfg.agent.provider, "builtin": True})
-
-    # 自定义 provider
-    for cp in _load_custom_providers(cfg):
-        pid = cp["id"]
-        try:
-            prov = get_chat_provider(replace(cfg.agent,
-                provider=pid, custom_providers={pid: cp}))
-            ok, why = prov.available()
-            if cp.get("api_key_env") and _os.environ.get(cp["api_key_env"], "").strip() == _PLACEHOLDER_KEY:
-                ok, why = False, f"环境变量 {cp['api_key_env']} 仍是占位 key"
-        except Exception as e:
-            ok, why = False, str(e)
-        out.append({"id": pid, "available": ok, "reason": why,
-                    "default": pid == cfg.agent.provider, "builtin": False,
-                    "name": cp.get("name", pid), "base_url": cp.get("base_url", ""),
-                    "default_model": cp.get("default_model", "")})
-    return out
 
 
 def _ui_segment(s: dict) -> dict:
@@ -251,7 +173,7 @@ def make_handler(cfg: Config):
             if u.path == "/api/transcript":
                 return self._api_transcript(parse_qs(u.query))
             if u.path == "/api/agent/providers":
-                return self._json({"providers": _providers_info(cfg),
+                return self._json({"providers": registry.providers_info(cfg),
                                    "chunk_model": cfg.agent.chunk_model,
                                    "extract_model": cfg.agent.extract_model,
                                    "chunk_provider": cfg.agent.provider_for("chunk"),
@@ -310,19 +232,18 @@ def make_handler(cfg: Config):
             # 重新加载 .env,让手动编辑的 key 即时生效(override=True 覆盖已有值)
             load_dotenv(cfg.home / ".env", override=True)
             # 同步更新内存 cfg 的 custom_providers(可能刚通过控制台添加/删除)
-            from memory_system.config import _load_custom_providers_map
-            new_cp = _load_custom_providers_map(cfg.home)
+            new_cp = registry.custom_map(cfg.home)
             if new_cp != cfg.agent.custom_providers:
                 object.__setattr__(cfg, 'agent', replace(cfg.agent, custom_providers=new_cp))
 
+            providers = registry.providers_info(cfg)
             agents = {}
             for role, default_model in [("chunk", cfg.agent.chunk_model),
                                          ("extract", cfg.agent.extract_model)]:
-                effective_provider = cfg.agent.provider_for(role)
                 agents[role] = {
-                    "provider": effective_provider,
+                    "provider": cfg.agent.provider_for(role),
                     "model": default_model,
-                    "providers": _providers_info(cfg),
+                    "providers": providers,
                 }
 
             # embedding key 状态
@@ -334,33 +255,11 @@ def make_handler(cfg: Config):
                 "dim": emb.dim,
                 "key_env": emb.api_key_env,
                 "key_present": bool(emb_key),
-                "key_masked": _mask_key(emb.api_key_env),
+                "key_masked": registry.mask_key(emb.api_key_env),
             }
 
-            # 各 provider 的 key 状态(claude_cli 不走 key,fake 无 key)
-            compat_key = _os2.environ.get(cfg.agent.api_key_env, "").strip()
-            agent_keys = [
-                {"id": "claude_cli", "key_env": None, "key_present": None, "key_masked": None},
-                {"id": "deepseek", "key_env": cfg.agent.api_key_env,
-                 "key_present": bool(compat_key and compat_key != _PLACEHOLDER_KEY),
-                 "key_masked": _mask_key(cfg.agent.api_key_env)},
-                {"id": "openai_compat", "key_env": cfg.agent.api_key_env,
-                 "key_present": bool(compat_key and compat_key != _PLACEHOLDER_KEY),
-                 "key_masked": _mask_key(cfg.agent.api_key_env)},
-                {"id": "qwen", "key_env": cfg.agent.api_key_env,
-                 "key_present": bool(compat_key and compat_key != _PLACEHOLDER_KEY),
-                 "key_masked": _mask_key(cfg.agent.api_key_env)},
-                {"id": "fake", "key_env": None, "key_present": None, "key_masked": None},
-            ]
-            # 自定义 provider 的 key 状态
-            for cp in _load_custom_providers(cfg):
-                ak = _os2.environ.get(cp["api_key_env"], "").strip()
-                agent_keys.append({
-                    "id": cp["id"],
-                    "key_env": cp["api_key_env"],
-                    "key_present": bool(ak and ak != "[this is your api key]"),
-                    "key_masked": _mask_key(cp["api_key_env"]),
-                })
+            # 各 provider 的 key 状态(内置无 key 项报 None;compat 家族共用;自定义各自一份)
+            agent_keys = registry.agent_key_status(cfg)
 
             self._json({
                 "agents": agents,
@@ -381,7 +280,7 @@ def make_handler(cfg: Config):
             updates: dict[str, str] = {}
             # provider 切换(按 role 独立,不再共享)
             provider = str(body.get("provider", "")).strip()
-            if provider and provider in _all_provider_ids(cfg):
+            if provider and provider in registry.all_provider_ids(cfg):
                 prov_key = {"chunk": "MEMORY_AGENT_CHUNK_PROVIDER",
                             "extract": "MEMORY_AGENT_EXTRACT_PROVIDER"}[role]
                 updates[prov_key] = provider
@@ -625,11 +524,11 @@ def make_handler(cfg: Config):
             env_var = pid.upper() + "_API_KEY"
 
             # 去重
-            existing = _load_custom_providers(cfg)
+            existing = registry.load_custom(cfg.home)
             if any(p["id"] == pid for p in existing):
                 return self._json({"error": f"provider id {pid!r} 已存在"}, 409)
 
-            placeholder = "[this is your api key]"
+            placeholder = registry.PLACEHOLDER_KEY
             cp = {
                 "id": pid,
                 "name": name,
@@ -644,7 +543,7 @@ def make_handler(cfg: Config):
 
             # 保存到 custom_providers.json
             existing.append(cp)
-            _save_custom_providers(cfg, existing)
+            registry.save_custom(cfg.home, existing)
 
             # 更新内存 cfg
             new_cp_map = dict(cfg.agent.custom_providers)
@@ -667,7 +566,7 @@ def make_handler(cfg: Config):
             pid = str(body.get("id", "")).strip()
             if not pid:
                 return self._json({"error": "缺 id"}, 400)
-            if pid in _AGENT_PROVIDERS:
+            if registry.is_builtin(pid):
                 return self._json({"error": f"内置 provider {pid!r} 不可修改"}, 403)
 
             name = str(body.get("name", "")).strip()
@@ -678,7 +577,7 @@ def make_handler(cfg: Config):
             if not base_url.startswith("https://") and not base_url.startswith("http://"):
                 return self._json({"error": "base_url 必须以 http:// 或 https:// 开头"}, 400)
 
-            existing = _load_custom_providers(cfg)
+            existing = registry.load_custom(cfg.home)
             idx = next((i for i, p in enumerate(existing) if p.get("id") == pid), None)
             if idx is None:
                 return self._json({"error": f"provider {pid!r} 不存在"}, 404)
@@ -688,7 +587,7 @@ def make_handler(cfg: Config):
             cp["base_url"] = base_url.rstrip("/")
             cp["default_model"] = model
             existing[idx] = cp
-            _save_custom_providers(cfg, existing)
+            registry.save_custom(cfg.home, existing)
 
             new_cp_map = dict(cfg.agent.custom_providers)
             new_cp_map[pid] = {"base_url": cp["base_url"], "api_key_env": cp["api_key_env"],
@@ -701,17 +600,17 @@ def make_handler(cfg: Config):
             """删除自定义 provider(内置 provider 不可删)。"""
             if not pid:
                 return self._json({"error": "缺 id"}, 400)
-            if pid in _AGENT_PROVIDERS:
+            if registry.is_builtin(pid):
                 return self._json({"error": f"内置 provider {pid!r} 不可删除"}, 403)
 
-            existing = _load_custom_providers(cfg)
+            existing = registry.load_custom(cfg.home)
             cp = next((p for p in existing if p["id"] == pid), None)
             if not cp:
                 return self._json({"error": f"provider {pid!r} 不存在"}, 404)
 
             # 不移除 .env 中的 key 变量(用户可能以后还要用);只删 JSON 条目
             existing = [p for p in existing if p["id"] != pid]
-            _save_custom_providers(cfg, existing)
+            registry.save_custom(cfg.home, existing)
 
             # 更新内存 cfg
             new_cp_map = dict(cfg.agent.custom_providers)
@@ -761,41 +660,20 @@ def make_handler(cfg: Config):
 
         # ---- S5 审核/归档 ----
         def _api_agent_test(self, body) -> None:
-            """连接测试:对指定 provider 做一次极小探活(非实际 LLM 调用)。"""
+            """连接测试:对指定 provider 做一次极小探活(非实际 LLM 调用)。
+
+            统一走 registry/工厂:provider 类型与 base_url/key 的映射只在 registry 一处定,
+            这里只负责"哪个 id → 建 provider → 报 available()"。
+            """
             pid = str(body.get("provider", "")).strip()
-            valid_ids = set(_all_provider_ids(cfg)) | {"deepseek", "openai_compat", "qwen"}
-            if not pid or pid not in valid_ids:
+            if not pid or pid not in set(registry.all_provider_ids(cfg)):
                 return self._json({"ok": False, "detail": f"未知 provider: {pid!r}"}, 400)
-            if pid in ("claude_cli",):
-                from memory_system.agent.claude_cli import ClaudeCliProvider
-                try:
-                    prov = ClaudeCliProvider()
-                    ok, why = prov.available()
-                except Exception as e:
-                    ok, why = False, str(e)
-            elif pid == "fake":
-                from memory_system.agent.fake import FakeChatProvider
-                prov = FakeChatProvider()
+            try:
+                prov = get_chat_provider(replace(cfg.agent, provider=pid,
+                                                 custom_providers=registry.custom_map(cfg.home)))
                 ok, why = prov.available()
-            elif pid in ("deepseek", "openai_compat", "qwen"):
-                from memory_system.agent.openai_compat import OpenAICompatProvider
-                try:
-                    prov = OpenAICompatProvider(cfg.agent.base_url, cfg.agent.api_key_env)
-                    ok, why = prov.available()
-                except Exception as e:
-                    ok, why = False, str(e)
-            else:
-                # 自定义 provider
-                cp_list = _load_custom_providers(cfg)
-                cp = next((p for p in cp_list if p["id"] == pid), None)
-                if not cp:
-                    return self._json({"ok": False, "detail": f"自定义 provider 配置缺失: {pid!r}"}, 400)
-                from memory_system.agent.openai_compat import OpenAICompatProvider
-                try:
-                    prov = OpenAICompatProvider(cp["base_url"], cp["api_key_env"])
-                    ok, why = prov.available()
-                except Exception as e:
-                    ok, why = False, str(e)
+            except Exception as e:  # noqa: BLE001
+                ok, why = False, str(e)
             self._json({"ok": ok, "detail": why})
 
         def _session_for_staging(self, body) -> str | None:

@@ -1,9 +1,24 @@
 # S5 注意事项
 
-> 用途:沉淀 S5 写入侧的长期语义、前端坑位和验收门。主交接只写下一步;S5 细节来这里查。
-> 当前状态:2026-06-25 S5 Phase 1 已收尾。写入侧、查看侧只读、控制台、三视图导航全部就绪。下一步转编辑写回(editor.py + edit API)。
+> 用途:沉淀 S5 写入侧的长期语义、前端坑位和验收门。`HANDOFF_NOTES.md` 只写下一步(现转 S6 检索层);
+> 架构全貌看 `ARCHITECTURE.md`;S5 细节来这里查。
+> 当前状态:2026-06-25 S5 Phase 1 已收尾。写入侧、查看侧只读、控制台、三视图导航全部就绪。
 
 ## 当前状态
+
+### Phase 1 完成度
+
+| 模块 | 关键文件 | 状态 |
+|---|---|---|
+| 写入侧全流水线 | `chunk.js`, `triage.js`, `server.py` | ✅ |
+| 切段 ops(加回合到段、向上合并等) | `chunk.js` | ✅ |
+| 查看侧 galaxy 只读 | `view.js`, `views.py` | ✅ |
+| 控制台(配置/切换/key掩码/测试/自定义provider) | `console.js`, `server.py` | ✅ |
+| 全部读口 API | `server.py` + `views.py` | ✅ |
+| 三视图导航 + 冻结 | `view.js`, `index.html`, `styles.css` | ✅ |
+| LLM 在途锁 / 处理锁 | `api.js`, `transcripts.js` | ✅ |
+| 错误告警可关闭、base_url 校验 | `chunk.js`, `server.py` | ✅ |
+
 
 - S5 引擎/API/CLI 已完成:`confirm/reject/archive`、staging 编辑、active episode 碎片 + 增量 DB 入库。
 - S5 GUI 写入侧已完成主链路:`切段 -> 蒸馏 -> extract -> staging edit -> confirm/reject/delete`。
@@ -81,7 +96,8 @@ PY
 
 ## 2026-06-25 工程债修复
 
-四项修复，全部后端，零前端波及。详见下方。S1–S5 引擎验证 + JS 语法 + NUL 检查全绿。
+四项修复 + 一处性能标记 + 一次 provider 重构，全部后端，零前端波及。详见下方。S1–S5 引擎验证 +
+provider 回归 + JS 语法 + NUL 检查全绿。
 
 ### 1. SQLite `busy_timeout` — `db/connection.py:19`
 
@@ -107,6 +123,20 @@ PY
 
 - **问题**:当前共现边每次 `/api/memories` 请求都 O(E·K²) 实时计算（`itertools.combinations` 对所有 episode 的 node 两两配对）。非 bug，设计取舍——当前数据量无需物化表。
 - **处理**:在共现边计算处加了 `NOTICE` 注释，标注复杂度和未来 `edges` 缓存表方向。API 形状不变，以后改读缓存表即可。
+
+### 6. provider 知识收口到注册表 — 新增 `agent/registry.py`
+
+- **问题**:provider 知识散在 4 处且重复——`config.py`(AgentConfig 默认 + 硬编码 deepseek base_url)、
+  `agent/__init__.py` 工厂(再硬编码一份内置目录)、`server.py`(`_AGENT_PROVIDERS` 第二份 id 清单 +
+  持久化 + 掩码 + info 拼装 + 增删改 + 测试)、`config.py:_load_custom_providers_map` 与
+  `server.py:_load_custom_providers` 两份不同形状的 custom 加载。`[this is your api key]` 占位串写了 3 处。
+- **修复**:新建 `agent/registry.py` 作单一来源——`BUILTINS` 目录(id/显示名/kind/默认 base_url/key_env)、
+  `load_custom`/`save_custom`/`custom_map`、`all_provider_ids`/`providers_info`/`agent_key_status`、
+  `mask_key`/`PLACEHOLDER_KEY`。工厂按 `kind` 分派;config / server 都从 registry 读。
+  `_api_agent_test` 由「按 id 一长串 if/elif 各自建 provider」压成「过工厂 + 报 available()」。
+  server.py 1092 → 970 行。`scripts/verify_provider_config.py` 的 import 跟着指向 registry。
+- **循环依赖注意**:registry 顶层只 import 标准库、对 Config 走鸭子类型;`config.load_config` 与工厂内部
+  对 registry 都做**函数内 import**。详见 `ARCHITECTURE.md §5.7`。
 
 ## 后续方向
 

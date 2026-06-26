@@ -1,6 +1,7 @@
 # memory_system
 
-Claude Code 持久化记忆系统。概念正本见 `../project/idea_v2.md`,施工脊梁见 `../project/phase1_build.md`。
+Claude Code 持久化记忆系统。**架构总览见 `ARCHITECTURE.md`**(分层/接口/铁律/数据流,先读这份);
+概念正本见 `../project/idea_v2.md`,施工脊梁见 `../project/phase1_build.md`,交接与下一步见 `HANDOFF_NOTES.md`。
 
 三层:**原文(source_text)→ 情景(episode)→ 语义(nodes)**。人驱动入库,惰性衰减检索,碎片是正本、SQLite 是可重建索引。
 
@@ -53,16 +54,22 @@ memory-system archive ep_a1b2c3d4          # 审核(S5):active 碎片降级为 a
 
 ## 前端
 
-`memory-system serve` 起的是**零依赖**本地前端(标准库 http.server + 原生 HTML/JS)。
-当前 GUI:列 transcript(已自动隐藏 `/clear` 空壳等空会话)、清洗预览、选回合标「已处理」、
-切块(运行 agent / 并分移边界 / 手动建段 / 标删 / 保存),以及 S5 写入侧「蒸馏」审核:
-按父 jsonl 聚类、段预览、五件套编辑、提取、确认/拒绝/删除、批量操作。
+`memory-system serve` 起的是**零依赖**本地前端(标准库 http.server + 原生 HTML/JS),**三视图单页**
+(写入 | 查看 | 控制台,切换=显隐冻结):
+
+- **写入侧**:列 transcript(已自动隐藏 `/clear` 空壳等空会话)、清洗预览、选回合标「已处理」、
+  切块(运行 agent / 并分移边界 / 手动建段 / 标删 / 保存),以及「蒸馏」审核:按父 jsonl 聚类、
+  段预览、五件套编辑、提取、确认/拒绝/删除、批量操作。
+- **查看侧**:galaxy 力导向图(只读)显示已入库记忆,点节点看详情、点条目看五件套;node↔node 边 =
+  共享 episode 的共现。
+- **控制台**:agent provider 配置/切换/保存、自定义 OpenAI 兼容 provider 增删、key 密文掩码、
+  连接测试(chat + embedding)。
 
 前端文件在 `memory_system/web/`,仍是零构建静态资源;S5 细节见 `S5_NOTES.md`。
 
 ## 阶段
 
-当前:**Phase 1 / S0–S5 引擎全绿**(S5 第一段「入库闭环」:staging→active 碎片 + 增量入库 + node 别名
-合并,`verify_s1`~`verify_s5` 全过;S5 写入侧 GUI 已可用)。下一步:S5 查看侧 demo、控制台和三视图导航,
-然后 S6 检索模块。
+当前:**Phase 1 / S0–S5 全绿**——引擎 + 写入侧富 GUI + 查看侧只读 galaxy + 控制台 + 三视图导航全部就绪
+(`verify_s1`~`verify_s5` + `verify_web_api` + `verify_view_api` + `verify_provider_config` 全过)。
+下一步:**S6 检索层**(向量召回 + FTS + 图扩展);编辑写回降到 Phase 2。详见 `HANDOFF_NOTES.md`。
 逐步通过门见 `phase1_build.md`。

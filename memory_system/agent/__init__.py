@@ -14,19 +14,25 @@ from memory_system.config import AgentConfig
 
 
 def get_chat_provider(cfg: AgentConfig) -> ChatProvider:
-    if cfg.provider == "fake":
-        from memory_system.agent.fake import FakeChatProvider
+    from memory_system.agent import registry
 
-        return FakeChatProvider()
-    if cfg.provider == "claude_cli":
-        from memory_system.agent.claude_cli import ClaudeCliProvider
+    b = registry.builtin(cfg.provider)
+    if b is not None:
+        if b.kind == "fake":
+            from memory_system.agent.fake import FakeChatProvider
 
-        return ClaudeCliProvider()
-    if cfg.provider in ("deepseek", "openai_compat", "qwen"):
-        from memory_system.agent.openai_compat import OpenAICompatProvider
+            return FakeChatProvider()
+        if b.kind == "claude_cli":
+            from memory_system.agent.claude_cli import ClaudeCliProvider
 
-        return OpenAICompatProvider(cfg.base_url or "https://api.deepseek.com/v1",
-                                    cfg.api_key_env or "DEEPSEEK_API_KEY")
+            return ClaudeCliProvider()
+        if b.kind == "openai_compat":
+            from memory_system.agent.openai_compat import OpenAICompatProvider
+
+            # deepseek/openai_compat/qwen 共用运行时 cfg.base_url/api_key_env,
+            # 未给时回落到目录里的兜底默认。
+            return OpenAICompatProvider(cfg.base_url or b.base_url,
+                                        cfg.api_key_env or b.key_env)
     # 自定义 provider(控制台动态添加的 OpenAI 兼容端点)
     cp = cfg.custom_providers.get(cfg.provider)
     if cp:

@@ -169,28 +169,16 @@ class Config:
         ]
 
 
-def _load_custom_providers_map(home: Path) -> dict:
-    """从 custom_providers.json 加载自定义 provider 映射(供 AgentConfig 使用)。"""
-    import json as _json
-    p = home / "custom_providers.json"
-    if not p.exists():
-        return {}
-    try:
-        data = _json.loads(p.read_text("utf-8"))
-        items = data.get("providers", []) if isinstance(data, dict) else []
-    except (ValueError, KeyError):
-        return {}
-    return {cp["id"]: {"base_url": cp["base_url"], "api_key_env": cp["api_key_env"],
-                       "default_model": cp.get("default_model", "")} for cp in items}
-
-
 def load_config() -> Config:
     # 先确定主目录,再从 主目录/.env 灌环境(已 export 的优先),最后读 embedding 配置。
     # MEMORY_SYSTEM_HOME 决定 .env 的位置,故不从 .env 取(鸡生蛋)。
+    # registry 在函数内 import:它的 custom_map 是 provider 知识的单一来源,顶层 import
+    # 会与 agent/__init__ 的 `from memory_system.config import AgentConfig` 形成循环。
+    from memory_system.agent import registry
     from memory_system.env import load_dotenv
 
     home = _home()
     load_dotenv(home / ".env")
     agent_cfg = _agent_from_env()
-    agent_cfg = replace(agent_cfg, custom_providers=_load_custom_providers_map(home))
+    agent_cfg = replace(agent_cfg, custom_providers=registry.custom_map(home))
     return Config(home=home, embedding=_embedding_from_env(), agent=agent_cfg)

@@ -12,8 +12,7 @@ import urllib.error
 import urllib.request
 
 from memory_system.agent.base import ChatError, ChatProvider, ChatResult, ChatTimeout
-
-_PLACEHOLDER_KEY = "[this is your api key]"
+from memory_system.agent.registry import PLACEHOLDER_KEY as _PLACEHOLDER_KEY
 
 
 class OpenAICompatProvider(ChatProvider):

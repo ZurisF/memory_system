@@ -33,7 +33,8 @@ from memory_system.cli import cmd_index  # noqa: E402
 from memory_system.config import load_config  # noqa: E402
 from memory_system.db import migrate  # noqa: E402
 from memory_system.db.connection import connect  # noqa: E402
-from memory_system.server import _all_provider_ids, _providers_info, make_handler  # noqa: E402
+from memory_system.agent.registry import all_provider_ids, providers_info  # noqa: E402
+from memory_system.server import make_handler  # noqa: E402
 
 CFG = load_config()
 for d in CFG.all_dirs():
@@ -94,11 +95,11 @@ CFG = replace(CFG, agent=replace(CFG.agent, custom_providers={
     }
 }))
 
-ids = _all_provider_ids(CFG)
+ids = all_provider_ids(CFG)
 assert {"claude_cli", "deepseek", "openai_compat", "qwen", "fake", "custom_tmp"} <= set(ids), ids
 ok("内置 OpenAI 兼容 provider 仍在 Web provider 列表")
 
-info = {p["id"]: p for p in _providers_info(CFG)}
+info = {p["id"]: p for p in providers_info(CFG)}
 assert info["deepseek"]["available"], info["deepseek"]
 assert not info["custom_tmp"]["available"], info["custom_tmp"]
 assert "占位" in info["custom_tmp"]["reason"], info["custom_tmp"]
