@@ -42,6 +42,23 @@ def get_chat_provider(cfg: AgentConfig) -> ChatProvider:
     raise ValueError(f"未知 agent provider: {cfg.provider!r}")
 
 
+def probe_provider(cfg: AgentConfig, provider_id: str,
+                   custom_providers: dict) -> tuple[bool, str]:
+    """对指定 provider 做一次极小探活:建 provider → 报 available(),不发真实 LLM 请求。
+
+    provider 类型与 base_url/key 的映射只在 registry/工厂一处定,这里只负责
+    "哪个 id → 建 provider → available()"。返回 (ok, 原因);建失败折成 (False, 原因)。
+    """
+    from dataclasses import replace
+
+    try:
+        prov = get_chat_provider(replace(cfg, provider=provider_id,
+                                         custom_providers=custom_providers))
+        return prov.available()
+    except Exception as e:  # noqa: BLE001
+        return False, str(e)
+
+
 def _balanced_object(s: str) -> str | None:
     """返回 s 中第一个平衡的 {...} 子串(尊重字符串与转义),无则 None。"""
     start = s.find("{")
@@ -110,5 +127,6 @@ __all__ = [
     "ChatError",
     "ChatTimeout",
     "get_chat_provider",
+    "probe_provider",
     "extract_json",
 ]

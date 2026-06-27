@@ -38,7 +38,7 @@ from memory_system.extract import (  # noqa: E402
 )
 from memory_system.fragments import Node, write_node  # noqa: E402
 from memory_system.preprocess import CleanedTranscript, Turn, render_source_text  # noqa: E402
-from memory_system.server import _ui_episode  # noqa: E402
+from memory_system.ui_shape import ui_episode as _ui_episode  # noqa: E402
 
 CFG = load_config()
 for d in CFG.all_dirs():

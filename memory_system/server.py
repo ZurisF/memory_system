@@ -30,11 +30,13 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from memory_system import preview_cache, processed, segments_store
-from memory_system.agent import get_chat_provider, registry
+from memory_system.agent import probe_provider, registry
 from memory_system.config import Config
 from memory_system.db import migrate
 from memory_system.db.connection import connect
+from memory_system.env import update_dotenv
 from memory_system.transcript import describe, discover
+from memory_system.ui_shape import ui_doc, ui_staging
 
 _WEB = Path(__file__).parent / "web"
 _STATIC_TYPES = {
@@ -44,76 +46,8 @@ _STATIC_TYPES = {
 }
 
 # provider 知识(内置目录 / 自定义增删 / 可用性 / key 状态 / 掩码 / 占位 key)统一在
-# memory_system.agent.registry,本文件只做 HTTP 编排。
-
-
-def _update_dotenv(env_path: Path, updates: dict[str, str]) -> None:
-    """把 updates 里的 key=value 写回 .env 文件;已存在的 key 改值,不存在的追加。
-    不改变其他行、不重排、保留注释和空行。"""
-    import os as _os2
-    lines = env_path.read_text("utf-8").splitlines() if env_path.exists() else []
-    updated: set[str] = set()
-    new_lines: list[str] = []
-    for line in lines:
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            new_lines.append(line)
-            continue
-        if stripped.startswith("export "):
-            prefix, rest = "export ", stripped[len("export "):]
-        else:
-            prefix, rest = "", stripped
-        if "=" not in rest:
-            new_lines.append(line)
-            continue
-        key = rest.split("=", 1)[0].strip()
-        if key in updates:
-            val = updates[key]
-            new_lines.append(f"{prefix}{key}={val}")
-            updated.add(key)
-        else:
-            new_lines.append(line)
-    # 追加未更新过的新 key
-    for key, val in updates.items():
-        if key not in updated:
-            new_lines.append(f"{key}={val}")
-    env_path.parent.mkdir(parents=True, exist_ok=True)
-    env_path.write_text("\n".join(new_lines) + "\n", "utf-8")
-    # 同步到当前进程环境
-    for key, val in updates.items():
-        _os2.environ[key] = val
-
-
-def _ui_segment(s: dict) -> dict:
-    """送前端的段:剥掉 covered_uuids(uuid 不上台面)。"""
-    return {k: v for k, v in s.items() if k != "covered_uuids"}
-
-
-def _ui_episode(e: dict) -> dict:
-    """送前端的 staging episode:剥掉 covered_uuids(uuid 不上台面)。source_text 保留(S5 审核要看)。"""
-    return {k: v for k, v in e.items() if k != "covered_uuids"}
-
-
-def _ui_staging(doc: dict | None) -> dict:
-    if not doc:
-        return {"episodes": [], "retry": [], "updated_at": None}
-    return {
-        "episodes": [_ui_episode(e) for e in doc.get("episodes", [])],
-        "retry": doc.get("retry", []),
-        "updated_at": doc.get("updated_at"),
-    }
-
-
-def _ui_doc(doc: dict | None) -> dict:
-    if not doc:
-        return {"segments": [], "agent": None, "retry": [], "source_mtime": None}
-    return {
-        "segments": [_ui_segment(s) for s in doc.get("segments", [])],
-        "agent": doc.get("agent"),
-        "retry": doc.get("retry", []),
-        "source_mtime": doc.get("source_mtime"),
-        "updated_at": doc.get("updated_at"),
-    }
+# memory_system.agent.registry;.env 写回在 env.update_dotenv;送前端的 uuid 剥离在
+# ui_shape;探活在 embedding.probe / agent.probe_provider。本文件只做 HTTP 编排。
 
 
 def make_handler(cfg: Config):
@@ -297,7 +231,7 @@ def make_handler(cfg: Config):
 
             env_path = cfg.home / ".env"
             try:
-                _update_dotenv(env_path, updates)
+                update_dotenv(env_path, updates)
             except OSError as e:
                 return self._json({"error": f"写入 .env 失败: {e}"}, 500)
 
@@ -323,13 +257,13 @@ def make_handler(cfg: Config):
             sid = _valid_session_id((q.get("session_id") or [""])[0])
             if sid:
                 doc = staging_store.load(cfg.staging_episodes_dir, sid)
-                return self._json(_ui_staging(doc))
+                return self._json(ui_staging(doc))
             path = _confine((q.get("path") or [""])[0])
             if path is None or not path.exists():
                 return self._json({"error": "路径越界或文件不存在"}, 404)
             ct = preview_cache.get(cfg.preview_cache_dir, path)
             doc = staging_store.load(cfg.staging_episodes_dir, ct.session_id)
-            self._json(_ui_staging(doc))
+            self._json(ui_staging(doc))
 
         def _api_staging_all(self) -> None:
             """汇总磁盘上所有在处理的会话(只扫 chunks + episodes 两个工作目录,不碰全量
@@ -359,7 +293,7 @@ def make_handler(cfg: Config):
                 doc = segments_store.load(cfg.chunks_dir, f.stem)
                 if not doc:
                     continue
-                ui = _ui_doc(doc)
+                ui = ui_doc(doc)
                 s = _slot(f.stem, doc.get("source_path", ""))
                 s["segments"] = ui["segments"]
                 s["chunk_retry"] = ui["retry"]
@@ -370,7 +304,7 @@ def make_handler(cfg: Config):
                 doc = staging_store.load(cfg.staging_episodes_dir, f.stem)
                 if not doc:
                     continue
-                ui = _ui_staging(doc)
+                ui = ui_staging(doc)
                 s = _slot(f.stem, doc.get("source_path", ""))
                 s["episodes"] = ui["episodes"]
                 s["retry"] = ui["retry"]
@@ -391,7 +325,7 @@ def make_handler(cfg: Config):
                 return self._json({"error": "路径越界或文件不存在"}, 404)
             ct = preview_cache.get(cfg.preview_cache_dir, path)
             doc = segments_store.load(cfg.chunks_dir, ct.session_id)
-            self._json(_ui_doc(doc))
+            self._json(ui_doc(doc))
 
         def _api_transcripts(self) -> None:
             infos = discover(cfg.transcripts_root)
@@ -528,6 +462,8 @@ def make_handler(cfg: Config):
             if any(p["id"] == pid for p in existing):
                 return self._json({"error": f"provider id {pid!r} 已存在"}, 409)
 
+            from datetime import datetime, timezone
+
             placeholder = registry.PLACEHOLDER_KEY
             cp = {
                 "id": pid,
@@ -535,11 +471,11 @@ def make_handler(cfg: Config):
                 "base_url": base_url.rstrip("/"),
                 "api_key_env": env_var,
                 "default_model": model or "",
-                "created_at": None,  # 略
+                "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             }
 
             # 写 .env:占位 key + 同步环境
-            _update_dotenv(cfg.home / ".env", {env_var: placeholder})
+            update_dotenv(cfg.home / ".env", {env_var: placeholder})
 
             # 保存到 custom_providers.json
             existing.append(cp)
@@ -554,7 +490,7 @@ def make_handler(cfg: Config):
             self._json({
                 "ok": True,
                 "provider": cp,
-                "hint": f"Key 占位已写入 .env 的 {env_var}=[this is your api key];请到 ~/.memory_system/.env 替换为真实 key 后再测试连接",
+                "hint": f"Key 占位已写入 .env 的 {env_var}={placeholder};请到 ~/.memory_system/.env 替换为真实 key 后再测试连接",
                 "warnings": _hints if _hints else None,
             })
 
@@ -630,50 +566,33 @@ def make_handler(cfg: Config):
                 env_updates["MEMORY_AGENT_EXTRACT_PROVIDER"] = ""
                 new_agent = replace(new_agent, extract_provider="")
             if env_updates:
-                _update_dotenv(cfg.home / ".env", env_updates)
+                update_dotenv(cfg.home / ".env", env_updates)
             object.__setattr__(cfg, 'agent', new_agent)
 
             self._json({"ok": True, "removed": pid})
 
         # ---- embedding 连接测试 ----
         def _api_embedding_test(self, body) -> None:
-            """对 embedding 端点做一次最小探活:嵌单个短词,验证连通性和维度。"""
+            """对 embedding 端点做一次最小探活(探活逻辑在 embedding.probe,这里只编排)。"""
             _ = body  # 无参数,用当前配置
-            try:
-                from memory_system.embedding import get_provider
-                prov = get_provider(cfg.embedding)
-                if cfg.embedding.provider == "fake":
-                    self._json({"ok": True, "detail": "fake embedding 始终可用"})
-                    return
-                # 实际调用
-                vec = prov.embed_one("test")
-                if not vec or not isinstance(vec, list):
-                    self._json({"ok": False, "detail": "返回空向量"})
-                    return
-                self._json({
-                    "ok": True,
-                    "detail": f"嵌入成功,维度={len(vec)},模型={cfg.embedding.model}",
-                    "dim": len(vec),
-                })
-            except Exception as e:
-                self._json({"ok": False, "detail": str(e)[:300]})
+            from memory_system import embedding
+
+            ok, detail, dim = embedding.probe(cfg.embedding)
+            out: dict = {"ok": ok, "detail": detail}
+            if dim is not None:
+                out["dim"] = dim
+            self._json(out)
 
         # ---- S5 审核/归档 ----
         def _api_agent_test(self, body) -> None:
             """连接测试:对指定 provider 做一次极小探活(非实际 LLM 调用)。
 
-            统一走 registry/工厂:provider 类型与 base_url/key 的映射只在 registry 一处定,
-            这里只负责"哪个 id → 建 provider → 报 available()"。
+            探活逻辑在 agent.probe_provider;这里只做请求校验(未知 id 回 400)与编排。
             """
             pid = str(body.get("provider", "")).strip()
             if not pid or pid not in set(registry.all_provider_ids(cfg)):
                 return self._json({"ok": False, "detail": f"未知 provider: {pid!r}"}, 400)
-            try:
-                prov = get_chat_provider(replace(cfg.agent, provider=pid,
-                                                 custom_providers=registry.custom_map(cfg.home)))
-                ok, why = prov.available()
-            except Exception as e:  # noqa: BLE001
-                ok, why = False, str(e)
+            ok, why = probe_provider(cfg.agent, pid, registry.custom_map(cfg.home))
             self._json({"ok": ok, "detail": why})
 
         def _session_for_staging(self, body) -> str | None:
@@ -703,7 +622,7 @@ def make_handler(cfg: Config):
             except archive.ArchiveError as e:
                 return self._json({"error": str(e)}, 400)
             doc = staging_store.load(cfg.staging_episodes_dir, session_id)
-            self._json({"ok": True, "public_id": pid, **_ui_staging(doc)})
+            self._json({"ok": True, "public_id": pid, **ui_staging(doc)})
 
         def _api_reject(self, body) -> None:
             from memory_system import archive, staging_store
@@ -719,7 +638,7 @@ def make_handler(cfg: Config):
             except archive.ArchiveError as e:
                 return self._json({"error": str(e)}, 400)
             doc = staging_store.load(cfg.staging_episodes_dir, session_id)
-            self._json({"ok": True, **_ui_staging(doc)})
+            self._json({"ok": True, **ui_staging(doc)})
 
         def _api_staging_edit(self, body) -> None:
             from memory_system import staging_store
@@ -736,7 +655,7 @@ def make_handler(cfg: Config):
             except KeyError as e:
                 return self._json({"error": str(e)}, 404)
             doc = staging_store.load(cfg.staging_episodes_dir, session_id)
-            self._json({"ok": True, **_ui_staging(doc)})
+            self._json({"ok": True, **ui_staging(doc)})
 
         def _api_staging_delete(self, body) -> None:
             """干净删除一条未入库的 staging episode(不留痕,区别于 reject 的打回重做)。
@@ -756,7 +675,7 @@ def make_handler(cfg: Config):
             except KeyError as e:
                 return self._json({"error": str(e)}, 404)
             doc = staging_store.load(cfg.staging_episodes_dir, session_id)
-            self._json({"ok": True, **_ui_staging(doc)})
+            self._json({"ok": True, **ui_staging(doc)})
 
         def _api_archive(self, body) -> None:
             from memory_system import archive
@@ -807,10 +726,10 @@ def make_handler(cfg: Config):
                                             provider=agent_cfg.provider, model=model, error=str(e))
                 doc = segments_store.load(cfg.chunks_dir, ct.session_id)
                 return self._json({"kind": "failed", "error": str(e),
-                                   "errors": e.errors, **_ui_doc(doc)}, 502)
+                                   "errors": e.errors, **ui_doc(doc)}, 502)
             doc = segments_store.record_agent_run(cfg.chunks_dir, ct.session_id,
                                                   str(path), mtime, res)
-            self._json({"ok": True, **_ui_doc(doc)})
+            self._json({"ok": True, **ui_doc(doc)})
 
         def _api_extract(self, body) -> None:
             from dataclasses import replace as _replace
@@ -862,7 +781,7 @@ def make_handler(cfg: Config):
                                            provider=agent_cfg.provider, model=model, errors=errors)
             doc = staging_store.load(sdir, ct.session_id)
             self._json({"ok": True, "staged": len(batch.staged), "failed": len(batch.failed),
-                        **_ui_staging(doc)})
+                        **ui_staging(doc)})
 
         def _api_save_segments(self, body) -> None:
             path = _confine(body.get("path", ""))
@@ -901,7 +820,7 @@ def make_handler(cfg: Config):
             if not vr["ok"]:
                 return self._json({"error": "段重叠,会重复入库", "overlaps": vr["overlaps"]}, 400)
             doc = segments_store.save_full(cfg.chunks_dir, ct.session_id, str(path), mtime, norm)
-            self._json({"ok": True, "gaps": vr["gaps"], **_ui_doc(doc)})
+            self._json({"ok": True, "gaps": vr["gaps"], **ui_doc(doc)})
 
         def _api_delete_segments(self, body) -> None:
             """删段(单/多)。改 chunks.json,不碰 staging episode(段与已提取条目解耦)。
@@ -929,7 +848,7 @@ def make_handler(cfg: Config):
                                    "message": f"{len(staged)} 个待删段已在蒸馏区有提取"}, 409)
 
             doc, deleted = segments_store.delete(cfg.chunks_dir, session_id, seg_ids)
-            self._json({"ok": True, "deleted": deleted, "staged": staged, **_ui_doc(doc)})
+            self._json({"ok": True, "deleted": deleted, "staged": staged, **ui_doc(doc)})
 
         def _api_select(self, body) -> None:
             path = _confine(body.get("path", ""))

@@ -33,7 +33,7 @@ from memory_system.chunk import (  # noqa: E402
 )
 from memory_system.config import load_config  # noqa: E402
 from memory_system.preprocess import CleanedTranscript, Turn  # noqa: E402
-from memory_system.server import _ui_segment  # noqa: E402
+from memory_system.ui_shape import ui_segment as _ui_segment  # noqa: E402
 
 CFG = load_config()
 for d in CFG.all_dirs():

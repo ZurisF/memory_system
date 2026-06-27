@@ -28,12 +28,14 @@
    引擎:`archive.py`(写)/ `index.py`(重建)。
 
 2. **uuid / 向量永不上台面。**
-   message-uuid 只圈在操作态书签表(`processed_segments`)内,不进碎片、不进 API 返回、不上 UI。
+   message-uuid 只允许存在于操作态/工作态:段级书签表(`processed_segments`)和
+   `staging/chunks|episodes` 的 `covered_uuids`。它不进碎片正本、不进 active/read API 返回、不上 UI;
    送前端前一律经 `server.py:_ui_*` 剥 `covered_uuids`。向量同理(`views.py` 的 dataclass 本就无此字段)。
 
-3. **key 永远从环境变量读,绝不落盘、绝不经前端。**
-   `.env` 里只存占位符或用户手填的真 key;代码只读 `os.environ`。掩码后才回前端
-   (`registry.mask_key`)。换 embedding 模型 → meta 锁拒写旧维度,必须从碎片全量重嵌。
+3. **key 不进代码/仓库/前端;运行时只从环境读。**
+   真 key 可以由仓库外的数据主目录 `.env` 注入,但代码只读 `os.environ`,HTTP 只回掩码
+   (`registry.mask_key`),绝不把明文 key 传给前端。换 embedding 模型 → meta 锁拒写旧维度,
+   必须从碎片全量重嵌。
 
 补充不变量:**段/五件套是「工作态」,不是正本**(`staging/` 下的 JSON,可丢弃,删了不影响记忆)。
 只有 S5 confirm 才把工作态固化成 active 碎片。
@@ -103,7 +105,7 @@ preprocess.clean → CleanedTranscript        清洗成 [我]/[Claude] 回合 Tu
   `Config`(home/embedding/agent/transcripts_root + 目录布局 property);
   `EmbeddingConfig` / `AgentConfig`(都 frozen);`load_config()`(确定 home → 灌 `.env` → 读 env 配置 → 注入 custom provider 映射);
   `AgentConfig.provider_for(role)`(chunk/extract 的有效 provider:专用 > 默认)。
-- **`env.py`** — 零依赖 `.env` 加载。`parse_env` / `load_dotenv(path, override=)`(已 export 的环境优先,除非 override)。
+- **`env.py`** — 零依赖 `.env` 读写。`parse_env` / `load_dotenv(path, override=)`(已 export 的环境优先,除非 override);`update_dotenv(path, updates)`(写回 .env:改值/追加,保留注释空行,并同步 `os.environ`——控制台改 provider/model、加自定义 provider 占位 key 都走它)。
 
 ### 5.2 transcript 接入与清洗
 - **`transcript.py`** — 发现层。`discover(root)` / `describe(path)` → `TranscriptInfo`(只 stat+嗅探)。
@@ -135,19 +137,20 @@ preprocess.clean → CleanedTranscript        清洗成 [我]/[Claude] 回合 Tu
   `load_custom` / `save_custom` / `custom_map`(`custom_providers.json` 的 list 源 + 派生 map);
   `all_provider_ids(cfg)` / `providers_info(cfg)` / `agent_key_status(cfg)`(各 provider key 状态);
   `mask_key(env_var)`、`PLACEHOLDER_KEY`(占位 key 常量,唯一定义处)。
-- **`agent/__init__.py`** — 工厂 `get_chat_provider(cfg)`(按 `registry.builtin().kind` 分派)+ `extract_json`(剥围栏、定位平衡 `{}`)。
+- **`agent/__init__.py`** — 工厂 `get_chat_provider(cfg)`(按 `registry.builtin().kind` 分派)+ `probe_provider(cfg, id, custom_map)`(建 provider→`available()` 的探活,不发真实请求,失败折成 `(False, 原因)`)+ `extract_json`(剥围栏、定位平衡 `{}`)。
 - **`agent/base.py`** — `ChatProvider` 接口(`complete(system,user,*,model,timeout)→ChatResult`、`available()→(bool,why)`)、`ChatError/ChatTimeout`。
 - **`agent/{claude_cli,openai_compat,fake}.py`** — 三个实现。claude_cli 走本机 `claude -p`(复用订阅、不烧 key);openai_compat 走 urllib(deepseek/qwen/自定义共用,base_url+key_env 注入);fake 离线确定性。
-- **`embedding/`** — 对称的另一族:`get_provider(cfg.embedding)` 工厂 + `dashscope`(text-embedding-v4,1024 维)/ `fake`。
+- **`embedding/`** — 对称的另一族:`get_provider(cfg.embedding)` 工厂 + `probe(cfg)→(ok, detail, dim)`(嵌单词探活,不抛异常)+ `dashscope`(text-embedding-v4,1024 维)/ `fake`。
 
 > provider 依赖方向(避免循环):`registry` 顶层只 import 标准库,对 `Config` 走鸭子类型;
 > `config.load_config` 与工厂内部对 `registry` 都做**函数内 import**。
 
 ### 5.8 HTTP 服务(前端后端)
-- **`server.py`** — 纯标准库 `ThreadingHTTPServer`,只绑 `127.0.0.1`。
+- **`server.py`** — 纯标准库 `ThreadingHTTPServer`,只绑 `127.0.0.1`。**只做 HTTP 编排**:路由 + 薄 handler,
+  非 HTTP 逻辑已下沉(`.env` 写回→`env.update_dotenv`、探活→`embedding.probe`/`agent.probe_provider`、形状裁剪→`ui_shape`)。
   `make_handler(cfg)` 闭包出 `Handler`;路由:GET 用 if 链、**POST 用 dict 派发**(`do_POST` 的 `routes`)、DELETE/PUT 各一条。
   路径安全:`_confine(raw)`(限制在 transcripts_root 内,堵任意文件读)、`_valid_session_id`。
-  送前端裁剪:`_ui_segment/_ui_episode/_ui_staging/_ui_doc`(剥 uuid)。
+- **`ui_shape.py`** — 铁律 2 的单一执行点:`ui_segment/ui_episode/ui_staging/ui_doc`,送前端前从工作态 JSON 剥 `covered_uuids`。
 
 ### 5.9 CLI
 - **`cli.py`** — `prog="memory-system"`。命令:`init` / `migrate {status,up,down}` / `doctor` / `scan` / `preview` / `serve` / `chunk` / `extract` / `confirm` / `reject` / `archive` / `index rebuild` / `embed`。每个 `cmd_*(cfg, args)→int`。
@@ -217,20 +220,23 @@ provider 增改删:`POST/PUT/DELETE /api/agent/providers`。
 > provider_config)前必须 `export no_proxy=127.0.0.1,localhost` 并 `unset http_proxy https_proxy all_proxy`,
 > 否则 urllib 把 localhost 也走代理 → HTTP 502。
 
+
 前端:`node --check web/*.js` + NUL 字节检查(见 HANDOFF §验证)。
 
 ---
 
 ## 10. 修订意见(已知工程改进项,按优先级)
 
-> 已完成:**provider 注册表**(2026-06-25)——把散在 config/工厂/server 三处的 provider 知识收进
-> `agent/registry.py`,server.py 1092→970 行,占位 key 三处合一。下面是仍待做的。
-
-**P1 · server.py 进一步抽薄(970 行,仍偏厚)。**
-现在剩下的非 HTTP 逻辑还有:`_update_dotenv`(dotenv 写回,宜进 `env.py`)、连接测试
-`_api_embedding_test`/`_api_agent_test` 的探活逻辑(宜下沉到 embedding/agent 模块,server 只编排)、
-`_ui_*` 形状裁剪(宜进 `views.py` 或独立 `ui_shape.py`)。抽完 server 只剩路由 + 薄 handler,约 600 行。
-风险低:后端有 `verify_*` 全套兜底。
+> 已完成:
+> - **provider 注册表**(2026-06-25)——把散在 config/工厂/server 三处的 provider 知识收进
+>   `agent/registry.py`,server.py 1092→970 行,占位 key 三处合一。
+> - **P1 · server.py 抽薄**(2026-06-26)——三处非 HTTP 逻辑下沉:`_update_dotenv`→`env.update_dotenv`、
+>   探活 `_api_embedding_test`/`_api_agent_test`→`embedding.probe`/`agent.probe_provider`、
+>   `_ui_*`→新模块 `ui_shape.py`。server.py 970→887 行,只剩路由 + 薄 handler + 路径安全。
+>   (注:原估 ~600 行偏乐观——剩下的 chunk/extract/confirm 等 handler 本身就是合法的 HTTP 编排,不再下压。)
+>   verify 全套(s1–s5 + web/view/provider)重构前后均全绿。
+>
+> 下面是仍待做的。
 
 **P2 · 前端全局变量(隐患最高,收益偏虚,建议单独一轮)。**
 `state.js` ~22 个模块级可变全局靠隐式全局作用域跨 8 个文件共享,任何模块能改任何全局,无封装、
@@ -238,10 +244,16 @@ provider 增改删:`POST/PUT/DELETE /api/agent/providers`。
 (b) 彻底——转 `<script type="module">` + import/export(更正但工作量大,只有 `node --check` 兜底,回归风险高)。
 
 **P3 · 零散项。**
-- `views.py` node↔node 边 O(E·K²) 实时计算,数据量大会慢;物化 edges 表入口已留(`views.py:85` NOTICE)。
-- `_api_add_provider` 的 hint 文案里仍内联 `[this is your api key]` 字面量(纯展示串,非逻辑,可换 `registry.PLACEHOLDER_KEY`)。
-- `m002.up` 调 `load_config()` 取维度——迁移依赖运行时 config 是刻意设计(vec0 维度建表定死),已在其 docstring 说明,留意但不算债。
-- `/api/transcripts` 冷缓存首次会 clean 全部 jsonl,大库下慢;`index rebuild` 全量重嵌真 DashScope 会联网耗额度。
+> 已修(2026-06-26):
+> - `_api_add_provider` 的 hint 不再内联 `[this is your api key]` 字面量,改用 `{placeholder}`(=`registry.PLACEHOLDER_KEY`);
+>   该字面量现在全代码只在 `registry.py:PLACEHOLDER_KEY` 一处定义。
+> - 自定义 provider 的 `created_at` 不再写死 `None`(原 `# 略`),落真 UTC ISO 时间戳(与各 store 的 `_now()` 同写法)。
+>
+> 仍保留(刻意设计或已延后,非债):
+> - `views.py` node↔node 边 O(E·K²) 实时计算,数据量大会慢;物化 edges 表是 idea_v2 明确「等数据量证明价值再建」的可选缓存,入口已留(`views.py:86` NOTICE),本轮不建。
+> - `m002.up` 调 `load_config()` 取维度——迁移依赖运行时 config 是刻意设计(vec0 维度建表定死),已在其 docstring 说明,不算债。
+> - `/api/transcripts` 冷缓存首次会 clean 全部 jsonl,大库下慢;`index rebuild` 全量重嵌真 DashScope 会联网耗额度。两者是固有成本,非可清理的债。
+> - `cli.py` doctor 的「缓存 vs 真相一致性 / 孤儿碎片检查」仍是占位(`cli.py:124` TODO)——是真功能而非零散项,实现需扫 fragments↔DB 对账,留待单独一轮。
 
 **未做但概念上待定(Phase 2,见 HANDOFF):** 编辑写回(`editor.py` + 改 overview 须重嵌)、
 自动精炼 agent + diff 红绿块、段拖拽排序(语义冲突需先厘清)、多步 ctrl-z。

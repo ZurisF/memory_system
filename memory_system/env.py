@@ -45,3 +45,41 @@ def load_dotenv(path: Path, *, override: bool = False) -> dict[str, str]:
             os.environ[key] = val
             applied[key] = val
     return applied
+
+
+def update_dotenv(path: Path, updates: dict[str, str]) -> None:
+    """把 updates 里的 key=value 写回 .env 文件,并同步到当前进程 os.environ。
+
+    已存在的 key 改值,不存在的追加;不改其他行、不重排、保留注释和空行。
+    控制台改 provider/model、加自定义 provider 占位 key 都走这里。
+    """
+    lines = path.read_text("utf-8").splitlines() if path.exists() else []
+    updated: set[str] = set()
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            new_lines.append(line)
+            continue
+        if stripped.startswith("export "):
+            prefix, rest = "export ", stripped[len("export "):]
+        else:
+            prefix, rest = "", stripped
+        if "=" not in rest:
+            new_lines.append(line)
+            continue
+        key = rest.split("=", 1)[0].strip()
+        if key in updates:
+            new_lines.append(f"{prefix}{key}={updates[key]}")
+            updated.add(key)
+        else:
+            new_lines.append(line)
+    # 追加未更新过的新 key
+    for key, val in updates.items():
+        if key not in updated:
+            new_lines.append(f"{key}={val}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(new_lines) + "\n", "utf-8")
+    # 同步到当前进程环境
+    for key, val in updates.items():
+        os.environ[key] = val

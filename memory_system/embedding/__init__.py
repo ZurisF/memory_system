@@ -16,4 +16,22 @@ def get_provider(cfg: EmbeddingConfig) -> EmbeddingProvider:
     raise ValueError(f"未知 embedding provider: {cfg.provider!r}")
 
 
-__all__ = ["EmbeddingProvider", "FakeProvider", "DashScopeProvider", "get_provider"]
+def probe(cfg: EmbeddingConfig) -> tuple[bool, str, int | None]:
+    """对 embedding 端点做一次最小探活:嵌单个短词,验证连通性与维度。
+
+    返回 (ok, detail, dim)。不抛异常——失败折成 (False, 原因, None) 交上层编排。
+    fake provider 不联网,直接报可用。
+    """
+    try:
+        prov = get_provider(cfg)
+        if cfg.provider == "fake":
+            return True, "fake embedding 始终可用", cfg.dim
+        vec = prov.embed_one("test")
+        if not vec or not isinstance(vec, list):
+            return False, "返回空向量", None
+        return True, f"嵌入成功,维度={len(vec)},模型={cfg.model}", len(vec)
+    except Exception as e:  # noqa: BLE001
+        return False, str(e)[:300], None
+
+
+__all__ = ["EmbeddingProvider", "FakeProvider", "DashScopeProvider", "get_provider", "probe"]
