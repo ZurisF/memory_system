@@ -11,6 +11,33 @@ $("#sort-toggle").onclick = () => {
   saveState();
   renderListItems();
 };
+$("#sort-dir").onclick = () => {
+  SORT_DIR = SORT_DIR === "desc" ? "asc" : "desc";
+  $("#sort-dir").textContent = SORT_DIR === "desc" ? "时间↓" : "时间↑";
+  saveState();
+  renderListItems();
+};
+
+// 切段区 grep:回车搜索;清空按钮复位为全量。搜索走后端(对原始 jsonl 匹配)。
+$("#t-search").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    const v = e.target.value.trim();
+    $("#t-search-clear").style.display = v ? "" : "none";
+    loadList(v);
+  } else if (e.key === "Escape") {
+    e.target.value = ""; $("#t-search-clear").style.display = "none"; loadList("");
+  }
+});
+$("#t-search-clear").onclick = () => {
+  $("#t-search").value = ""; $("#t-search-clear").style.display = "none"; loadList("");
+};
+
+// 导入:按钮触发隐藏的文件选择器,选完即上传刷新。
+$("#import-btn").onclick = () => $("#import-file").click();
+$("#import-file").onchange = (e) => {
+  importFiles(e.target.files);
+  e.target.value = "";  // 复位,允许再次选同名文件
+};
 
 // 块 B:确认分段(存段→待整理)、退出处理(解锁)、子阶段切换
 $("#confirm-segs").onclick = async () => {
@@ -41,5 +68,6 @@ $("#t-refresh").onclick = () => loadTriageAll();
 // 启动:先恢复本地游标(候选区/刚编辑/子屏),再拉列表;列表到位后把视图切回上次所在子屏。
 restoreState();
 $("#sort-toggle").textContent = SORT_MODE === "touched" ? "动过的沉底" : "按时间";
+$("#sort-dir").textContent = SORT_DIR === "desc" ? "时间↓" : "时间↑";
 loadProviders();
 loadList().then(() => { if (STAGE === "triage") setStage("triage"); });

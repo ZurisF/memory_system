@@ -17,7 +17,9 @@ const CAND = new Set();    // 候选篮子:勾选的 transcript path
 const EDITED = new Set();  // 本次会话点过/编辑过的 path(刚编辑 flag)
 const TMAP = new Map();    // path -> transcript info(候选/蒸馏显示 sid/cwd)
 const SEG_PICK = new Set(); // 切段屏:勾选的段下标(批量删段用)
-let SORT_MODE = "touched"; // jsonl 列表排序:touched(动过的沉底) | time(纯 mtime 倒序)
+let SORT_MODE = "touched"; // jsonl 列表排序:touched(动过的沉底) | time(纯 mtime)
+let SORT_DIR = "desc";     // 时间方向:desc(新→旧,默认) | asc(旧→新)
+let TQUERY = "";           // 切段区 grep 关键词(空=全量;后端对原始 jsonl 匹配)
 const TOUCHED = new Set(); // 磁盘上动过的 path(有 chunks/staging),后端 loadList 时填,决定沉底
 
 // 块 C:待整理(蒸馏)三栏 —— 左 session 列表 / 中 条目编辑 / 右 选项
@@ -36,7 +38,8 @@ const LS_KEY = "memsys_ingest_v1";
 function saveState() {
   try {
     localStorage.setItem(LS_KEY, JSON.stringify(
-      { cand: [...CAND], edited: [...EDITED], stage: STAGE, tri_cur: TRI_CUR, sort: SORT_MODE }));
+      { cand: [...CAND], edited: [...EDITED], stage: STAGE, tri_cur: TRI_CUR,
+        sort: SORT_MODE, dir: SORT_DIR }));
   } catch (e) { /* 隐私模式/超额:静默,内存态仍可用 */ }
 }
 function restoreState() {
@@ -47,6 +50,7 @@ function restoreState() {
     if (s.stage === "chunk" || s.stage === "triage") STAGE = s.stage;
     if (s.tri_cur) TRI_CUR = s.tri_cur;
     if (s.sort === "touched" || s.sort === "time") SORT_MODE = s.sort;
+    if (s.dir === "desc" || s.dir === "asc") SORT_DIR = s.dir;
   } catch (e) { /* 坏数据:忽略,从空起 */ }
 }
 

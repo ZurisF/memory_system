@@ -70,11 +70,16 @@ def describe(path: Path, *, now: float | None = None) -> TranscriptInfo:
     )
 
 
-def discover(root: Path, *, now: float | None = None) -> list[TranscriptInfo]:
-    """列出 root 下所有 jsonl,按 mtime 倒序(最近的在前)。"""
+def discover(root: Path, *, now: float | None = None,
+             pattern: str = "*/*.jsonl") -> list[TranscriptInfo]:
+    """列出 root 下匹配 pattern 的 jsonl,按 mtime 倒序(最近的在前)。
+
+    默认 `*/*.jsonl` 对应 Claude 的 `<encoded-cwd>/*.jsonl` 布局;导入目录是扁平的,
+    传 `*.jsonl`。
+    """
     if not root.exists():
         return []
-    paths = sorted(root.glob("*/*.jsonl"))
+    paths = sorted(root.glob(pattern))
     infos = [describe(p, now=now) for p in paths]
     infos.sort(key=lambda i: i.mtime, reverse=True)
     return infos

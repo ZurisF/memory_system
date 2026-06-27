@@ -153,6 +153,12 @@ class Config:
         # jsonl 预览的可丢弃派生缓存(S2 用),按 路径+mtime 失效。
         return self.home / "cache" / "jsonl_preview"
 
+    @property
+    def imports_dir(self) -> Path:
+        # 前端上传导入的 jsonl 落点(transcripts_root 之外的第二发现根)。
+        # 不污染 Claude 自己的 ~/.claude/projects;与正本/工作态无关,可删。
+        return self.home / "imports"
+
     def all_dirs(self) -> list[Path]:
         return [
             self.home,
@@ -166,6 +172,7 @@ class Config:
             self.logs_dir,
             self.diagnostics_dir,
             self.preview_cache_dir,
+            self.imports_dir,
         ]
 
 

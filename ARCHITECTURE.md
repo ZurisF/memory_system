@@ -90,6 +90,7 @@ preprocess.clean → CleanedTranscript        清洗成 [我]/[Claude] 回合 Tu
 | 切段工作态 | `staging/chunks/<session>.json` | S3→S4 中间态 | 是 | `segments_store.py` |
 | 提取工作态 | `staging/episodes/<session>.json` | S4→S5 中间态 | 是 | `staging_store.py` |
 | 预览缓存 | `cache/jsonl_preview/*` | 清洗结果派生物(键=路径+mtime) | 是 | `preview_cache.py` |
+| 导入的 jsonl | `imports/*.jsonl` | 前端上传的对话(transcripts_root 之外的第二发现根) | 是 | `server._api_import` |
 | 自定义 provider | `custom_providers.json` | 控制台加的端点目录 | 是(配置) | `agent/registry.py` |
 | 环境/密钥 | `.env` | 占位/真 key(只读进 os.environ) | —— | `env.py` |
 
@@ -108,7 +109,7 @@ preprocess.clean → CleanedTranscript        清洗成 [我]/[Claude] 回合 Tu
 - **`env.py`** — 零依赖 `.env` 读写。`parse_env` / `load_dotenv(path, override=)`(已 export 的环境优先,除非 override);`update_dotenv(path, updates)`(写回 .env:改值/追加,保留注释空行,并同步 `os.environ`——控制台改 provider/model、加自定义 provider 占位 key 都走它)。
 
 ### 5.2 transcript 接入与清洗
-- **`transcript.py`** — 发现层。`discover(root)` / `describe(path)` → `TranscriptInfo`(只 stat+嗅探)。
+- **`transcript.py`** — 发现层。`discover(root, *, pattern="*/*.jsonl")` / `describe(path)` → `TranscriptInfo`(只 stat+嗅探)。Claude 是 `<encoded-cwd>/*.jsonl`;导入目录是扁平的 `*.jsonl`,两根都扫。
 - **`preprocess.py`** — 清洗。`clean(path)` → `CleanedTranscript`(`Turn[]`);`render_for_chunk`(喂切块,带回合号)、`render_source_text(ct, start, end)`(喂提取,逐字原文)。按实测噪声分类剥离 system/tool/thinking 等。
 - **`preview_cache.py`** — `get(cache_dir, path, mtime=)` 取/建缓存;`sweep_stale` 清旧 mtime 文件(已接在 `get` 后)。
 
@@ -153,7 +154,7 @@ preprocess.clean → CleanedTranscript        清洗成 [我]/[Claude] 回合 Tu
 - **`ui_shape.py`** — 铁律 2 的单一执行点:`ui_segment/ui_episode/ui_staging/ui_doc`,送前端前从工作态 JSON 剥 `covered_uuids`。
 
 ### 5.9 CLI
-- **`cli.py`** — `prog="memory-system"`。命令:`init` / `migrate {status,up,down}` / `doctor` / `scan` / `preview` / `serve` / `chunk` / `extract` / `confirm` / `reject` / `archive` / `index rebuild` / `embed`。每个 `cmd_*(cfg, args)→int`。
+- **`cli.py`** — `prog="memory-system"`。命令:`init` / `migrate {status,up,down}` / `doctor` / `scan` / `preview` / `serve` / `chunk` / `extract` / `confirm` / `reject` / `archive` / `index rebuild` / `embed`。每个 `cmd_*(cfg, args)→int`。`doctor` 含碎片↔DB 双向一致性对账(孤儿碎片 / 悬空索引 / 坏碎片)。
 - **`diagnose.py`** — `diagnose_claude_code(cfg)` 实测平台事实(jsonl 形态/uuid/role),落报告到 `diagnostics/`。
 
 ---
@@ -176,13 +177,14 @@ preprocess.clean → CleanedTranscript        清洗成 [我]/[Claude] 回合 Tu
 
 ## 7. HTTP API 速查
 
-读(GET):`/api/transcripts`、`/api/transcript?path=`、`/api/segments?path=`、`/api/staging?{session_id|path}`、
+读(GET):`/api/transcripts[?q=]`(q=对原始 jsonl grep,大小写不敏感,不清洗;含导入目录;返回带 `imported` 标记)、`/api/transcript?path=`、`/api/segments?path=`、`/api/staging?{session_id|path}`、
 `/api/staging/all`、`/api/memories[?include_archived=1]`、`/api/memory?public_id=`、`/api/node?label=`、
 `/api/agent/providers`、`/api/agent/config`。
 
 写(POST):`/api/select`、`/api/chunk`、`/api/segments`(存段)、`/api/segments/delete`、`/api/extract`、
 `/api/confirm`、`/api/reject`、`/api/archive`、`/api/staging/edit`、`/api/staging/delete`、
-`/api/agent/config`(改 provider/model,写 `.env`)、`/api/agent/test`、`/api/embedding/test`。
+`/api/agent/config`(改 provider/model,写 `.env`)、`/api/agent/test`、`/api/embedding/test`、
+`/api/import`(`{filename, content}` 上传一份 jsonl 落 `imports/`——浏览器文件选择器只给内容不给真实路径,故走上传)。
 
 provider 增改删:`POST/PUT/DELETE /api/agent/providers`。
 
@@ -198,7 +200,7 @@ provider 增改删:`POST/PUT/DELETE /api/agent/providers`。
 |---|---|
 | `state.js` | 全局状态(~22 个模块级 let/const)、localStorage 游标、通用工具(`esc`/`toast`/`clone`)、`TPREVIEW` 缓存 |
 | `api.js` | `postJSON`、按 role 选默认 provider、`once(key,fn,btn)` 在途锁 |
-| `transcripts.js` | transcript 列表、候选篮子、阶段切换、`beginEdit`/`markDirty` |
+| `transcripts.js` | transcript 列表、候选篮子、阶段切换、`beginEdit`/`markDirty`;`loadList(q)` grep 搜索、`sortedList` 模式×方向(time/touched × desc/asc)、`importFiles` 上传导入 |
 | `chunk.js` | 切段屏:`runChunk`、段操作、`showAlert`/`renderAlerts` |
 | `triage.js` | 蒸馏/审核屏:段预览、五件套编辑、批量 confirm/reject/delete |
 | `view.js` | 三视图导航(写入/查看/控制台,切换=显隐冻结不销毁)+ galaxy 力导向图(只读) |
@@ -248,12 +250,12 @@ provider 增改删:`POST/PUT/DELETE /api/agent/providers`。
 > - `_api_add_provider` 的 hint 不再内联 `[this is your api key]` 字面量,改用 `{placeholder}`(=`registry.PLACEHOLDER_KEY`);
 >   该字面量现在全代码只在 `registry.py:PLACEHOLDER_KEY` 一处定义。
 > - 自定义 provider 的 `created_at` 不再写死 `None`(原 `# 略`),落真 UTC ISO 时间戳(与各 store 的 `_now()` 同写法)。
+> - `cli.py` doctor 补上**碎片↔DB 一致性对账**(原 `cli.py:124` TODO 占位):双向扫——「碎片有 DB 无」(索引落后,提示 `index rebuild`)、「DB 有碎片缺」(悬空索引,正本已失)、坏碎片(无法解析)。`serve()` 启动幂等补齐 `all_dirs()`(老主目录新增 `imports/` 无需重 init)。
 >
 > 仍保留(刻意设计或已延后,非债):
 > - `views.py` node↔node 边 O(E·K²) 实时计算,数据量大会慢;物化 edges 表是 idea_v2 明确「等数据量证明价值再建」的可选缓存,入口已留(`views.py:86` NOTICE),本轮不建。
 > - `m002.up` 调 `load_config()` 取维度——迁移依赖运行时 config 是刻意设计(vec0 维度建表定死),已在其 docstring 说明,不算债。
-> - `/api/transcripts` 冷缓存首次会 clean 全部 jsonl,大库下慢;`index rebuild` 全量重嵌真 DashScope 会联网耗额度。两者是固有成本,非可清理的债。
-> - `cli.py` doctor 的「缓存 vs 真相一致性 / 孤儿碎片检查」仍是占位(`cli.py:124` TODO)——是真功能而非零散项,实现需扫 fragments↔DB 对账,留待单独一轮。
+> - `/api/transcripts` 无 q 时冷缓存首次会 clean 全部 jsonl,大库下慢(带 q 的 grep 反而只清洗命中项,更快);`index rebuild` 全量重嵌真 DashScope 会联网耗额度。两者是固有成本,非可清理的债。
 
 **未做但概念上待定(Phase 2,见 HANDOFF):** 编辑写回(`editor.py` + 改 overview 须重嵌)、
 自动精炼 agent + diff 红绿块、段拖拽排序(语义冲突需先厘清)、多步 ctrl-z。

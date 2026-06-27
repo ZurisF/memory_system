@@ -2,7 +2,8 @@
 
 只绑 127.0.0.1。静态文件(index.html/app.js)在 web/ 下。
 API:
-  GET  /api/transcripts            列 transcript(清洗后 0 回合的空壳已剔除)
+  GET  /api/transcripts[?q=...]    列 transcript(空壳已剔除;q=对原始 jsonl grep,含导入目录)
+  POST /api/import {filename,content}  上传一份 jsonl 落到 imports/(浏览器选择器只给内容)
   GET  /api/transcript?path=...    取清洗回合 + 每回合已处理标记
   GET  /api/agent/providers        列可用 agent 后端(claude_cli/deepseek/fake)
   GET  /api/segments?path=...      取该 transcript 的切块工作态(段/agent/retry)
@@ -50,6 +51,19 @@ _STATIC_TYPES = {
 # ui_shape;探活在 embedding.probe / agent.probe_provider。本文件只做 HTTP 编排。
 
 
+def _raw_grep(path: Path, needle: str) -> bool:
+    """对原始 jsonl 文本(+ 路径串)做大小写不敏感子串匹配;needle 须已 lower。
+
+    不清洗、不解析——噪声(system/tool/uuid)可被命中,误差可接受(ARCHITECTURE §10 取舍)。
+    """
+    if needle in str(path).lower():
+        return True
+    try:
+        return needle in path.read_text(encoding="utf-8", errors="ignore").lower()
+    except OSError:
+        return False
+
+
 def make_handler(cfg: Config):
     def _valid_session_id(raw: object) -> str | None:
         sid = str(raw or "").strip()
@@ -58,17 +72,19 @@ def make_handler(cfg: Config):
         return sid
 
     def _confine(raw: str) -> Path | None:
-        """把传入 path 限制在 transcripts_root 内;越界/无效返回 None(堵任意文件读)。"""
+        """把传入 path 限制在 transcripts_root 或 imports_dir 内;越界/无效返回 None
+        (堵任意文件读)。导入的 jsonl 落在 imports_dir,故两根都放行。"""
         if not raw:
             return None
         try:
             p = Path(raw).expanduser().resolve()
-            base = cfg.transcripts_root.resolve()
+            bases = [cfg.transcripts_root.resolve(), cfg.imports_dir.resolve()]
         except (OSError, RuntimeError):
             return None
-        if p != base and base not in p.parents:
-            return None
-        return p
+        for base in bases:
+            if p == base or base in p.parents:
+                return p
+        return None
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *a):  # 静音默认请求日志
@@ -103,7 +119,7 @@ def make_handler(cfg: Config):
                 if ctype:
                     return self._static(name, ctype)
             if u.path == "/api/transcripts":
-                return self._api_transcripts()
+                return self._api_transcripts(parse_qs(u.query))
             if u.path == "/api/transcript":
                 return self._api_transcript(parse_qs(u.query))
             if u.path == "/api/agent/providers":
@@ -327,14 +343,23 @@ def make_handler(cfg: Config):
             doc = segments_store.load(cfg.chunks_dir, ct.session_id)
             self._json(ui_doc(doc))
 
-        def _api_transcripts(self) -> None:
-            infos = discover(cfg.transcripts_root)
+        def _api_transcripts(self, q) -> None:
+            # q:对原始 jsonl 文本做子串 grep(不清洗,噪声可接受——见 ARCHITECTURE §10)。
+            # 命中才清洗,故搜索时反而省下大量 clean 成本。空 q = 全量列表。
+            needle = (q.get("q") or [""])[0].strip().lower()
+            imports = {p.resolve() for p in cfg.imports_dir.glob("*.jsonl")} \
+                if cfg.imports_dir.exists() else set()
+            infos = discover(cfg.transcripts_root) + \
+                discover(cfg.imports_dir, pattern="*.jsonl")
+            infos.sort(key=lambda i: i.mtime, reverse=True)
             # 磁盘上已动过的会话(有 chunks 段工作态或 staging 提取):列表里沉底
             touched = {p.stem for p in cfg.chunks_dir.glob("*.json")}
             touched |= {p.stem for p in cfg.staging_episodes_dir.glob("*.json")}
             items = []
             hidden_empty = 0
             for i in infos:
+                if needle and not _raw_grep(i.path, needle):
+                    continue
                 # 清洗后 0 回合 = /clear 空壳等垃圾文件,剔除(人工审核前先去噪)。
                 ct = preview_cache.get(cfg.preview_cache_dir, i.path, mtime=i.mtime)
                 if not ct.turns:
@@ -344,9 +369,12 @@ def make_handler(cfg: Config):
                     {"session_id": i.session_id, "path": str(i.path), "cwd": i.cwd,
                      "mtime": i.mtime, "size": i.size, "line_count": i.line_count,
                      "turn_count": len(ct.turns), "maybe_writing": i.maybe_writing,
-                     "touched": i.session_id in touched})
+                     "touched": i.session_id in touched,
+                     "imported": i.path.resolve() in imports})
             self._json({"root": str(cfg.transcripts_root),
-                        "hidden_empty": hidden_empty, "transcripts": items})
+                        "imports_root": str(cfg.imports_dir),
+                        "query": needle, "hidden_empty": hidden_empty,
+                        "transcripts": items})
 
         def _api_transcript(self, q) -> None:
             path = _confine((q.get("path") or [""])[0])
@@ -390,6 +418,7 @@ def make_handler(cfg: Config):
                 "/api/agent/config": self._api_agent_config_post,
                 "/api/agent/providers": self._api_add_provider,
                 "/api/embedding/test": self._api_embedding_test,
+                "/api/import": self._api_import,
             }
             handler = routes.get(u.path)
             if handler is None:
@@ -870,10 +899,55 @@ def make_handler(cfg: Config):
             self._json({"ok": True, "segment_hash": h, "covered": len(uuids),
                         "turns": sorted(turn_idxs)})
 
+        def _api_import(self, body) -> None:
+            """接收前端上传的 jsonl 文本,落到 imports_dir,刷新后即出现在切段区列表。
+
+            浏览器文件选择器只给内容、不给真实磁盘路径,故走上传:{filename, content}。
+            落点是数据主目录 imports/(transcripts_root 之外的第二发现根),不污染
+            ~/.claude/projects;与正本/工作态无关,可删。
+            """
+            raw_name = str(body.get("filename", "")).strip()
+            content = body.get("content")
+            if not isinstance(content, str) or not content.strip():
+                return self._json({"error": "缺 content 或为空"}, 400)
+            # 文件名只取 basename(堵路径穿越),落到 .jsonl 后缀
+            stem = Path(raw_name).name.strip() or "imported"
+            if not stem.lower().endswith(".jsonl"):
+                stem += ".jsonl"
+            # 粗校验:至少一行能解析成 JSON 对象,否则不像 transcript(坏行宽容跳过)
+            ok_line = False
+            for line in content.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    if isinstance(json.loads(line), dict):
+                        ok_line = True
+                        break
+                except json.JSONDecodeError:
+                    continue
+            if not ok_line:
+                return self._json({"error": "内容里没有 JSON 对象行,不像 Claude transcript"}, 400)
+            # 落盘:同名加数字后缀去重
+            cfg.imports_dir.mkdir(parents=True, exist_ok=True)
+            dest = cfg.imports_dir / stem
+            if dest.exists():
+                base, n = dest.stem, 1
+                while dest.exists():
+                    dest = cfg.imports_dir / f"{base}-{n}.jsonl"
+                    n += 1
+            try:
+                dest.write_text(content, encoding="utf-8")
+            except OSError as e:
+                return self._json({"error": f"写入失败: {e}"}, 500)
+            self._json({"ok": True, "path": str(dest), "session_id": dest.stem})
+
     return Handler
 
 
 def serve(cfg: Config, *, host: str = "127.0.0.1", port: int = 8765) -> None:
+    for d in cfg.all_dirs():  # 幂等:补齐目录布局(如 imports/),老主目录无需重 init
+        d.mkdir(parents=True, exist_ok=True)
     con = connect(cfg.db_path)
     try:
         migrate.up(con)  # 确保 processed 表在

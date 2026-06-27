@@ -23,7 +23,16 @@
 
   <div id="screen-chunk">
   <div id="list">
-    <h2>Transcript <button id="sort-toggle" title="切换排序">动过的沉底</button></h2>
+    <h2>Transcript
+      <button id="sort-toggle" title="切换排序">动过的沉底</button>
+      <button id="sort-dir" title="时间正序/倒序">时间↓</button>
+      <button id="import-btn" title="选择本地 jsonl 上传导入">导入</button>
+      <input type="file" id="import-file" accept=".jsonl,application/json" multiple hidden>
+    </h2>
+    <div id="t-search-row">
+      <input type="text" id="t-search" placeholder="grep 原始 jsonl(回车搜索)…">
+      <button id="t-search-clear" title="清空搜索" style="display:none">×</button>
+    </div>
     <div id="cand-basket"></div><div id="t-items"></div>
   </div>
 

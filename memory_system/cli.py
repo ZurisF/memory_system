@@ -121,8 +121,58 @@ def cmd_doctor(cfg: Config, args: argparse.Namespace) -> int:
     except Exception as e:  # noqa: BLE001
         problems += 1
         print(f"  DB 检查失败: {e}")
-    # TODO(S1+): 缓存 vs 真相一致性、孤儿碎片检查
-    print("缓存一致性检查: （占位,S1 后补)")
+    # 碎片 ↔ DB 一致性(铁律 1:碎片是正本,DB 是可重建索引)。两类漂移:
+    #   ① 碎片有、DB 无 → 索引落后,`index rebuild` 可无损补回(可修)
+    #   ② DB 有、碎片缺 → 悬空索引行,正本已失(真损坏,rebuild 救不回)
+    try:
+        from memory_system.fragments import read_episode, read_node
+
+        def _scan(d: Path, ident):
+            ids: dict[str, Path] = {}
+            bad: list[tuple[str, Exception]] = []
+            for p in sorted(d.glob("*.md")):
+                try:
+                    ids[ident(p)] = p
+                except Exception as e:  # noqa: BLE001  坏碎片不该让整轮体检崩
+                    bad.append((p.name, e))
+            return ids, bad
+
+        disk_eps, bad_eps = _scan(cfg.episodes_dir, lambda p: read_episode(p).public_id)
+        disk_nodes, bad_nodes = _scan(cfg.nodes_dir, lambda p: read_node(p).label)
+        con = connect(cfg.db_path)
+        try:
+            db_eps = {pid for (pid,) in con.execute("SELECT public_id FROM episodes")}
+            db_nodes = {lab for (lab,) in con.execute("SELECT label FROM nodes")}
+        finally:
+            con.close()
+
+        frag_only_ep, frag_only_nd = set(disk_eps) - db_eps, set(disk_nodes) - db_nodes
+        db_only_ep, db_only_nd = db_eps - set(disk_eps), db_nodes - set(disk_nodes)
+
+        for name, err in bad_eps + bad_nodes:
+            problems += 1
+            print(f"  坏碎片(无法解析): {name} —— {err}")
+        if frag_only_ep or frag_only_nd:
+            problems += 1
+            print(f"  碎片有、DB 无(索引落后,跑 `index rebuild` 补回): "
+                  f"episode×{len(frag_only_ep)} node×{len(frag_only_nd)}")
+            for pid in sorted(frag_only_ep):
+                print(f"      ep  {pid}")
+            for lab in sorted(frag_only_nd):
+                print(f"      nd  {lab}")
+        if db_only_ep or db_only_nd:
+            problems += 1
+            print(f"  DB 有、碎片缺(悬空索引,正本已失!): "
+                  f"episode×{len(db_only_ep)} node×{len(db_only_nd)}")
+            for pid in sorted(db_only_ep):
+                print(f"      ep  {pid}")
+            for lab in sorted(db_only_nd):
+                print(f"      nd  {lab}")
+        if not (bad_eps or bad_nodes or frag_only_ep or frag_only_nd or db_only_ep or db_only_nd):
+            print(f"碎片↔DB 一致性: OK(episode×{len(disk_eps)} node×{len(disk_nodes)} 对齐)")
+    except Exception as e:  # noqa: BLE001
+        problems += 1
+        print(f"  一致性检查失败: {e}")
     print("OK" if problems == 0 else f"发现 {problems} 个问题")
     return 0 if problems == 0 else 1
 
