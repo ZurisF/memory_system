@@ -9,6 +9,14 @@ async function postJSON(url, body) {
   } catch (e) { return { error: String(e) }; }
 }
 
+// DELETE JSON 小工具(删 episode / node 走 query 参数,无请求体)
+async function delJSON(url) {
+  try {
+    const r = await fetch(url, { method: "DELETE" });
+    return await r.json();
+  } catch (e) { return { error: String(e) }; }
+}
+
 // 在途锁:防 LLM/写库等耗时操作被重复点击触发重复处理。
 // 同 key 在途时,后续点击被吞掉(toast 提示);响应回来(finally)才解锁——按完成解锁,非定时器。
 // 传 btn 则处理期间置灰显「处理中…」;若 btn 在重渲染后已离开 DOM(isConnected=false),跳过复原。
@@ -27,15 +35,18 @@ async function once(key, fn, btn) {
 }
 
 async function loadProviders() {
-  const d = await (await fetch("/api/agent/providers")).json();
-  PROVIDERS = d.providers || [];
-  CHUNK_MODEL = d.chunk_model || "sonnet";
+  let d;
+  try {
+    d = await (await fetch("/api/agent/providers")).json();
+  } catch (e) { toast("加载 provider 列表失败: " + e, true); return; }
+  ST.providers = d.providers || [];
+  ST.chunkModel = d.chunk_model || "sonnet";
   const fill = (sel, role) => {
     if (!sel) return;
     const defProvider = role === "chunk" ? d.chunk_provider :
                         role === "triage" ? d.extract_provider : "";
     sel.innerHTML = "";
-    const def = PROVIDERS.find((p) => p.id === defProvider);
+    const def = ST.providers.find((p) => p.id === defProvider);
     if (defProvider && (!def || !def.available)) {
       const o = document.createElement("option");
       o.value = "";
@@ -43,7 +54,7 @@ async function loadProviders() {
       o.selected = true;
       sel.appendChild(o);
     }
-    PROVIDERS.filter((p) => p.available || p.id === defProvider || p.builtin === false).forEach((p) => {
+    ST.providers.filter((p) => p.available || p.id === defProvider || p.builtin === false).forEach((p) => {
       const o = document.createElement("option");
       o.value = p.id;
       o.textContent = `${p.id}${p.available ? "" : " (不可用)"}${p.id === defProvider ? " ✓默认" : ""}`;
@@ -54,7 +65,7 @@ async function loadProviders() {
   };
   fill($("#provider"), "chunk");     // 切段 agent 选择器
   fill($("#tri-provider"), "triage"); // 提取 agent 选择器(待整理右栏)
-  $("#model").placeholder = `模型(空=默认 ${CHUNK_MODEL})`;
+  $("#model").placeholder = `模型(空=默认 ${ST.chunkModel})`;
   const tm = $("#tri-model");
   if (tm) tm.placeholder = `模型(空=默认 ${d.extract_model || "opus"})`;
 }

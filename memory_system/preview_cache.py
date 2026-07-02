@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import threading
 from pathlib import Path
 
 from memory_system.preprocess import CleanedTranscript, clean
@@ -30,9 +32,11 @@ def get(cache_dir: Path, path: Path, *, mtime: float | None = None) -> CleanedTr
         except (json.JSONDecodeError, KeyError):
             pass  # 缓存损坏 → 重算
     ct = clean(path)
-    cache_file.write_text(
-        json.dumps(ct.to_dict(), ensure_ascii=False), encoding="utf-8"
-    )
+    # 原子写 + 每线程独立 tmp 名:server 多线程可能并发重算同一份缓存,
+    # 谁后 replace 谁生效(内容相同),读者永远不会看到半截 JSON。
+    tmp = cache_file.with_suffix(f".{threading.get_ident()}.tmp")
+    tmp.write_text(json.dumps(ct.to_dict(), ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, cache_file)
     sweep_stale(cache_dir, path, mtime)
     return ct
 

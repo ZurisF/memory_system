@@ -4,7 +4,8 @@
 > 关键接口在哪、哪里有坑。细到接口层(标了 `文件:函数`,可直接跳)。
 > 末尾「修订意见」是当前已知的工程改进项。
 >
-> 最近更新:2026-06-25(provider 注册表落地后整理)。状态以 `HANDOFF_NOTES.md` 为准,
+> 最近更新:2026-07-01(健壮性一轮:碎片原子写 / 工作态并发锁 / .env 刷新不覆盖 export /
+> 列表热路径去全量读 / 前端 XSS+fetch 兜底)。状态以 `HANDOFF_NOTES.md` 为准,
 > 概念正典见 `project/idea_v2.md`。
 
 ---
@@ -76,6 +77,12 @@ preprocess.clean → CleanedTranscript        清洗成 [我]/[Claude] 回合 Tu
 **按块回滚**:`extract_segments` 逐段提取,坏段不拖好段——N 段成、M 段坏 → 成的进 staging、
 坏的进 retry 列表,不整批失败。
 
+**并发 + 逐条落盘**(2026-06-26):批量提取走线程池(`max_workers`,server 取 4),**慢 I/O(逐段
+LLM 调用)并发,结果消费/落盘回主线程串行**(`as_completed` 在调用线程逐个 yield)——故落盘回调
+无需锁、不竞争 staging 文件。每段一完成立即经 `on_staged`/`on_failed` 回调写盘,**批量提取中途
+退出已完成的段不丢**(根治旧的「批末一次性落盘」)。provider 都无状态(claude_cli 起独立子进程、
+openai_compat urllib 单发),并发安全。`max_workers=1`(默认)= 纯顺序,供 CLI / 行为脚本测试沿用。
+
 **回合(turn)是统一单位**:切块 agent 输出回合号(非行号),`covered_uuids` 由回合区间直接回映
 (`chunk.py:_covered_uuids`),杜绝多行消息的计数错位。
 
@@ -115,15 +122,20 @@ preprocess.clean → CleanedTranscript        清洗成 [我]/[Claude] 回合 Tu
 
 ### 5.3 蒸馏引擎(调 agent)
 - **`chunk.py`**(S3,Prompt 1)— `run_chunk(...)` → 段;`manual_segments(...)`(不走 agent,始终可用);`validate_segments`;超大输入抛 `OversizedError`(绝不静默截断)。
-- **`extract.py`**(S4,Prompt 2)— `extract_segments(...)` → `ExtractBatch`(按块回滚);`run_extract`(单段);`existing_nodes(nodes_dir)`(读 active node 喂三选一);五件套严校 `_parse_extraction`。
+- **`extract.py`**(S4,Prompt 2)— `extract_segments(..., max_workers=1, on_staged=, on_failed=)` → `ExtractBatch`(按块回滚 + 并发/逐条落盘:work 并发、consume 主线程串行);`run_extract`(单段);`existing_nodes(nodes_dir)`(读 active node 喂三选一);五件套严校 `_parse_extraction`。
 - Prompt 正本在 `prompts/chunk_system.txt` / `extract_system.txt`。
 
 ### 5.4 工作态持久化(可丢弃 JSON)
+- **`locks.py`** — 进程内锁注册表 `lock_for(key)`(按 key 的 RLock)。两个 store 的
+  「load→改→_write」按 `chunks:|staging:<session_id>` 互斥(server 多线程防丢更新);
+  provider 目录/cfg 热改用 `registry.CUSTOM_LOCK`。只防线程不防跨进程(本地单进程,够用)。
 - **`segments_store.py`** — 切段态读写。`load` / `save_full` / `record_agent_run` / `merge` / `split` / `set_boundary` / `delete`;`recompute_uuids`(段边界变 → 重算覆盖集)。
-- **`staging_store.py`** — 提取态读写。`load` / `upsert_episode` / `get_episode` / `edit_episode`(白名单字段) / `remove_episode`(干净删,不留痕) / `reject_episode`(留痕)。
+- **`staging_store.py`** — 提取态读写。`load` / `upsert_episode`(成功即清该段 retry) / `get_episode` / `edit_episode`(白名单字段) / `remove_episode`(干净删,不留痕) / `reject_episode`(留痕) / `append_retry`(记失败,同段只留最新) / `clear_retry`(按 seg_id 关闭失败标记,幂等,不动 episodes)。
 
 ### 5.5 入库闭环 与 正本
-- **`archive.py`**(S5)— `confirm_episode(...)`(staging→碎片+DB,**落地顺序硬约束**:所有可失败动作[embedding/向量/约束]在事务内 commit 之后,才原子写碎片);`reject_episode` / `archive_episode`(active→archived);`_plan_nodes`(node 三选一只在内存规划)。失败时**不写任何碎片、staging 原封不动**。
+- **`archive.py`**(S5)— `confirm_episode(...)`(staging→碎片+DB,**落地顺序硬约束**:所有可失败动作[embedding/向量/约束]在事务内 commit 之后,才原子写碎片);`reject_episode` / `archive_episode`(active→archived 软降级);`_plan_nodes`(node 三选一只在内存规划)。失败时**不写任何碎片、staging 原封不动**。
+  **真删(误入库)**:`delete_episode(cfg, public_id)` / `delete_node(cfg, label)` → `DeleteReport`。删除**落地顺序与 confirm 相反且这是对的**——碎片正本先删、再删 DB,中途失败最坏剩悬空 DB 行(`doctor` 对账 + `index rebuild` 丢弃),**绝不被 rebuild 复活**;`episode_vectors` 是 vec0 不吃 FK,显式删,膜/FTS 由 FK 级联/触发器随 episode 行删。删 node 还必须**从所有引用它的 episode 碎片摘掉该 label 并回写**(否则 rebuild 用 `ensure_node` 复活成桩);删 episode 后变孤儿的 node **保留**,在 `DeleteReport.orphaned_nodes` 点名(由用户再决定是否 `delete node`)。
+- **`editor.py`** — 编辑写回。`edit_episode(cfg, public_id, fields, emb_provider)` → `EditReport`,改 active/archived 碎片的**正文四件**(`EDITABLE = overview/summary/highlights/salience_tier`;传白名单外的键即报 `EditError`,明确 source_text/nodes 不可改)。**落地顺序同 confirm**:重嵌/向量/DB 在事务内 commit 成功后才回写碎片。**重嵌只在 overview 真变时做**(它是唯一进向量的字段),改 vec0 = 删后插 + 刷 last_embedded_at;summary/highlights/tier 改了不联网,source_text 不变故 FTS 由 `episodes_au` 触发器重灌同内容、无副作用。no-op(值没变)直接返回不写盘。
 - **`fragments.py`** — 正本读写。`serialize/parse_episode`、`serialize/parse_node`、`write/read_episode`、`load_all_episodes`;`Episode` / `Node` dataclass。格式 = Markdown frontmatter + 分节,`source_text` 永远是最后一节(逐字读到 EOF,绕开 markdown 误判)。零依赖手写解析,保 round-trip。
 - **`index.py`** — `rebuild(cfg, provider, lock_meta=)` 从碎片全量重建;`assert_embeddable`(写向量前校验 model/dim 与 meta 锁一致,不符拒写、不补零不截断);`insert_episode` / `ensure_node`。
 - **`processed.py`** — 操作态书签(uuid 只在此)。`segment_hash`(排序 uuid 集的 sha1,顺序无关稳定身份);`mark_segment` / `is_processed` / `processed_uuids` / `get_watermark`。**不参与碎片重建**,删库即丢(可接受代价)。
@@ -154,7 +166,7 @@ preprocess.clean → CleanedTranscript        清洗成 [我]/[Claude] 回合 Tu
 - **`ui_shape.py`** — 铁律 2 的单一执行点:`ui_segment/ui_episode/ui_staging/ui_doc`,送前端前从工作态 JSON 剥 `covered_uuids`。
 
 ### 5.9 CLI
-- **`cli.py`** — `prog="memory-system"`。命令:`init` / `migrate {status,up,down}` / `doctor` / `scan` / `preview` / `serve` / `chunk` / `extract` / `confirm` / `reject` / `archive` / `index rebuild` / `embed`。每个 `cmd_*(cfg, args)→int`。`doctor` 含碎片↔DB 双向一致性对账(孤儿碎片 / 悬空索引 / 坏碎片)。
+- **`cli.py`** — `prog="memory-system"`。命令:`init` / `migrate {status,up,down}` / `doctor` / `scan` / `preview` / `serve` / `chunk` / `extract` / `confirm` / `reject` / `archive` / `delete {episode,node}` / `index rebuild` / `embed`。每个 `cmd_*(cfg, args)→int`。`delete` 是真删(碎片 + DB 永久移除,区别于 `archive` 软降级)。`doctor` 含碎片↔DB 双向一致性对账(孤儿碎片 / 悬空索引 / 坏碎片)。
 - **`diagnose.py`** — `diagnose_claude_code(cfg)` 实测平台事实(jsonl 形态/uuid/role),落报告到 `diagnostics/`。
 
 ---
@@ -183,10 +195,15 @@ preprocess.clean → CleanedTranscript        清洗成 [我]/[Claude] 回合 Tu
 
 写(POST):`/api/select`、`/api/chunk`、`/api/segments`(存段)、`/api/segments/delete`、`/api/extract`、
 `/api/confirm`、`/api/reject`、`/api/archive`、`/api/staging/edit`、`/api/staging/delete`、
+`/api/staging/retry/clear`(关闭/忽略提取失败卡:按 seg_id 清 retry)、
 `/api/agent/config`(改 provider/model,写 `.env`)、`/api/agent/test`、`/api/embedding/test`、
 `/api/import`(`{filename, content}` 上传一份 jsonl 落 `imports/`——浏览器文件选择器只给内容不给真实路径,故走上传)。
 
 provider 增改删:`POST/PUT/DELETE /api/agent/providers`。
+
+编辑(POST):`/api/memory/edit {public_id, fields}`——正文四件写回(改 overview 回 `reembedded:true`),回 `changed`/`reembedded` + 更新后的整条 `memory`。越权字段(source_text/nodes)400。
+
+删(DELETE):`/api/memory?public_id=`(真删 episode,回 `orphaned_nodes`)、`/api/node?label=`(真删 node,回 `dereferenced_episodes`)。区别于 `POST /api/archive`(软降级)。删不存在的回 404。
 
 > 详细形状契约见 `project/frontend_plan.md` §7/§8。
 
@@ -198,12 +215,12 @@ provider 增改删:`POST/PUT/DELETE /api/agent/providers`。
 
 | 文件 | 职责 |
 |---|---|
-| `state.js` | 全局状态(~22 个模块级 let/const)、localStorage 游标、通用工具(`esc`/`toast`/`clone`)、`TPREVIEW` 缓存 |
+| `state.js` | 全局状态收进**单一 `ST = {}` 命名空间**(P2 已收口,2026-06-26)、localStorage 游标、通用工具(`esc`/`toast`/`clone`)、`PALETTE`/`LS_KEY` 常量。8 个 JS 仍隐式全局共享,但可变态都挂 `ST.*`(`ST.cur`/`ST.lock`/`ST.tris`…),无裸全局碰撞 |
 | `api.js` | `postJSON`、按 role 选默认 provider、`once(key,fn,btn)` 在途锁 |
 | `transcripts.js` | transcript 列表、候选篮子、阶段切换、`beginEdit`/`markDirty`;`loadList(q)` grep 搜索、`sortedList` 模式×方向(time/touched × desc/asc)、`importFiles` 上传导入 |
 | `chunk.js` | 切段屏:`runChunk`、段操作、`showAlert`/`renderAlerts` |
 | `triage.js` | 蒸馏/审核屏:段预览、五件套编辑、批量 confirm/reject/delete |
-| `view.js` | 三视图导航(写入/查看/控制台,切换=显隐冻结不销毁)+ galaxy 力导向图(只读) |
+| `view.js` | 三视图导航(写入/查看/控制台,切换=显隐冻结不销毁)+ galaxy 力导向图。node/episode 详情面板带**真删**按钮(二次 confirm;删 node 提示「将从 N 条 episode 摘除」;删后 unfocus + 重拉 `/api/memories`)。episode 面板带**编辑**态(`showEpisodeEditor`):正文四件表单(overview/summary textarea、tier 下拉、highlights 动态行 ≤3),source_text/nodes 只读;存→`POST /api/memory/edit`→回读刷新 |
 | `console.js` | 控制台:agent 配置/切换/保存、自定义 provider 增删、key 掩码、连接测试 |
 | `app.js` | 启动与事件绑定 |
 
@@ -216,6 +233,8 @@ provider 增改删:`POST/PUT/DELETE /api/agent/providers`。
 后端回归(用项目 `.venv`,否则可能因 `sqlite_vec` 缺失失败):
 ```bash
 .venv/bin/python scripts/verify_s1.py …… verify_s5.py
+.venv/bin/python scripts/verify_delete.py        # 删除层(真删 episode/node + 删后 rebuild 不复活)
+.venv/bin/python scripts/verify_edit.py          # 编辑写回(正文四件 + 改 overview 重嵌 + 编辑落正本)
 .venv/bin/python scripts/verify_web_api.py / verify_view_api.py / verify_provider_config.py
 ```
 > **本机有 socks/http 代理坑**:跑起本地 `ThreadingHTTPServer` 的测试(web_api / view_api /
@@ -230,6 +249,48 @@ provider 增改删:`POST/PUT/DELETE /api/agent/providers`。
 ## 10. 修订意见(已知工程改进项,按优先级)
 
 > 已完成:
+> - **健壮性一轮(全代码审查后修复)**(2026-07-01):
+>   ① **碎片正本原子写**——`fragments._atomic_write_text`(tmp + `os.replace`),write_episode/
+>   write_node 及其上游(confirm/编辑回写/删 node 摘 label)不再可能留半截正本;`.env`
+>   (`env.update_dotenv`)、`custom_providers.json`(`registry.save_custom`)、预览缓存
+>   (`preview_cache`,每线程独立 tmp 名)同步改原子写。
+>   ② **工作态并发锁**——新模块 `locks.py`(按 key 的进程内 RLock 注册表);`segments_store`/
+>   `staging_store` 所有「load→改→_write」按 `chunks:|staging:<session_id>` 互斥,批量提取
+>   期间对同会话 confirm/edit/删条不再互相覆盖;`registry.CUSTOM_LOCK` 保 custom_providers
+>   读改写与 server 五处 `cfg.agent` 热改(`object.__setattr__`)。
+>   ③ **.env 刷新不覆盖 shell export**——`env._dotenv_owned` 记「哪些键是 .env 灌的」,
+>   重复 load 只刷新这些键;`GET /api/agent/config` 不再 `override=True`(旧行为会把
+>   export 的真 key 冲成 .env 占位 key)。
+>   ④ **列表热路径去全量读**——`transcript.describe` 默认不数行(`count_lines=False`,
+>   仅 CLI `scan` 显式要),`line_count` 从 `/api/transcripts` 退场(前端本就未用);
+>   `discover`/`describe` 对 glob 后被清理的文件防 500。
+>   ⑤ **rebuild 单事务**——`index._clear` 不再单独 commit,清空+重灌同事务、失败整体回滚,
+>   兑现「任一步抛错 DB 原封不动」。
+>   ⑥ **前端**——`chunk.js` 段卡 tag 属性值 `esc`→`escAttr`(属性逃逸 XSS);裸 fetch 全部
+>   兜底 toast(loadList/loadProviders/loadTranscript/loadSegments/saveSegs/markSelected/
+>   galaxy 两面板);确认分段、批量删段、rejectEps 补 `once()` 在途锁;`loadTranscript`
+>   加 `ST.loadSeq` 后发者胜(连点切换不串台);session_id/stage_id 渲染补 esc+判空。
+>   ⑦ **散点**——editor highlights 逐字不 strip(对齐 extract);dashscope 收敛 `TimeoutError`;
+>   `chunk._covered_uuids` 与 `segments_store.recompute_uuids` 合一;server 请求体
+>   Content-Length 防护 + 128MB 上限。全套 verify(s1–s5/delete/edit/web/view/provider)绿。
+> - **编辑写回(后端 + API + 前端)**(2026-06-26)——`editor.edit_episode`(+ `EditError`/`EditReport`)
+>   改正本正文四件(overview/summary/highlights/salience_tier);**改 overview 才重嵌**(省额度),
+>   落地顺序同 confirm(DB commit 成功后才回写碎片),no-op 不写盘,白名单挡 source_text/nodes。
+>   `POST /api/memory/edit` + galaxy episode 面板编辑态(textarea/下拉/highlights 动态行)。
+>   `verify_edit.py`(引擎,含「编辑落正本→rebuild 还原」回归)+ `verify_view_api.py` 新增 1 道 HTTP 编辑门。
+> - **删除写回(后端 + API + 前端)**(2026-06-26)——`archive.delete_episode` / `delete_node`(+ `DeleteReport`)
+>   真删误入库的 episode / node:碎片正本 + DB(向量/膜/FTS/别名)同步删,**删除顺序与 confirm 相反**(碎片先走、
+>   DB 后,失败最坏剩悬空行由 doctor/rebuild 收口,绝不复活);删 node 连带从引用它的 episode 碎片摘 label
+>   (杜绝 rebuild 复活成桩),孤儿 node 保留并点名。CLI `delete {episode,node}` + `DELETE /api/memory|node`
+>   + galaxy 详情面板删除按钮(二次 confirm、删 node 提示影响 N 条 episode、删后刷新图)。
+>   `verify_delete.py`(引擎,含「删后 rebuild 不复活」)+ `verify_view_api.py` 新增 3 道 HTTP 删除门。
+> - **P2 · 前端全局收口**(2026-06-26)——`state.js` ~22 个模块级裸全局收进单一 `ST = {}` 命名空间
+>   (轻量路线 (a),非 ES module),8 个 JS 机械改引用(`CUR`→`ST.cur` 等,~211 处,词边界脚本 + 人工审)。
+>   工具函数 / 不变配置(`PALETTE`/`LS_KEY`)仍独立。`node --check` 全过 + 零裸全局残留 + 全套后端回归绿。
+> - **蒸馏区提取并发 + 逐条落盘**(2026-06-26)——`extract_segments` 加 `max_workers` + `on_staged`/`on_failed`
+>   回调:慢 I/O 并发、落盘回主线程串行(无锁无竞争),每段一完成即落 staging,中途退出已完成的不丢。
+>   配套:失败段「未提取卡」内联错误(消除一段两卡的「一直报错」观感)+ 「忽略」关闭失败标记
+>   (`staging_store.clear_retry` + `POST /api/staging/retry/clear`)。verify_s4 加并发/clear_retry 门。
 > - **provider 注册表**(2026-06-25)——把散在 config/工厂/server 三处的 provider 知识收进
 >   `agent/registry.py`,server.py 1092→970 行,占位 key 三处合一。
 > - **P1 · server.py 抽薄**(2026-06-26)——三处非 HTTP 逻辑下沉:`_update_dotenv`→`env.update_dotenv`、
@@ -240,11 +301,6 @@ provider 增改删:`POST/PUT/DELETE /api/agent/providers`。
 >
 > 下面是仍待做的。
 
-**P2 · 前端全局变量(隐患最高,收益偏虚,建议单独一轮)。**
-`state.js` ~22 个模块级可变全局靠隐式全局作用域跨 8 个文件共享,任何模块能改任何全局,无封装、
-易命名碰撞。两条路:(a) 轻量——收进单个 `ST = {}` 命名空间对象(机械改,要扫全部 8 文件);
-(b) 彻底——转 `<script type="module">` + import/export(更正但工作量大,只有 `node --check` 兜底,回归风险高)。
-
 **P3 · 零散项。**
 > 已修(2026-06-26):
 > - `_api_add_provider` 的 hint 不再内联 `[this is your api key]` 字面量,改用 `{placeholder}`(=`registry.PLACEHOLDER_KEY`);
@@ -253,9 +309,16 @@ provider 增改删:`POST/PUT/DELETE /api/agent/providers`。
 > - `cli.py` doctor 补上**碎片↔DB 一致性对账**(原 `cli.py:124` TODO 占位):双向扫——「碎片有 DB 无」(索引落后,提示 `index rebuild`)、「DB 有碎片缺」(悬空索引,正本已失)、坏碎片(无法解析)。`serve()` 启动幂等补齐 `all_dirs()`(老主目录新增 `imports/` 无需重 init)。
 >
 > 仍保留(刻意设计或已延后,非债):
+> - **confirm/edit 的「DB 先 commit、碎片后写」崩溃窗口**:commit 与写碎片之间进程被杀 →
+>   DB 新碎片旧(编辑被 rebuild 静默回退)或 DB 有碎片缺(重试产生第二行悬空,`doctor` 对账、
+>   rebuild 收口)。这是刻意选的顺序(失败不留碎片优先),记为已知风险,不改。
+> - 前端两处全量重渲染(勾选 transcript 重建整列表、选回合重绘全部气泡)与 galaxy 常驻 rAF:
+>   规模尚小,交互重构另起一轮。
 > - `views.py` node↔node 边 O(E·K²) 实时计算,数据量大会慢;物化 edges 表是 idea_v2 明确「等数据量证明价值再建」的可选缓存,入口已留(`views.py:86` NOTICE),本轮不建。
 > - `m002.up` 调 `load_config()` 取维度——迁移依赖运行时 config 是刻意设计(vec0 维度建表定死),已在其 docstring 说明,不算债。
 > - `/api/transcripts` 无 q 时冷缓存首次会 clean 全部 jsonl,大库下慢(带 q 的 grep 反而只清洗命中项,更快);`index rebuild` 全量重嵌真 DashScope 会联网耗额度。两者是固有成本,非可清理的债。
 
-**未做但概念上待定(Phase 2,见 HANDOFF):** 编辑写回(`editor.py` + 改 overview 须重嵌)、
-自动精炼 agent + diff 红绿块、段拖拽排序(语义冲突需先厘清)、多步 ctrl-z。
+**未做但概念上待定(Phase 2,见 HANDOFF):** 概念图(nodes 膜)编辑——给 episode 增删 node、
+孤儿 episode(删 node 后 0 挂载、galaxy 不可见)的可见化/重指派;自动精炼 agent + diff 红绿块、
+段拖拽排序(语义冲突需先厘清)、多步 ctrl-z。
+(删除家族 + 编辑写回正文四件——引擎/CLI/API/前端——已全部完成,见上「已完成」。)

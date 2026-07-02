@@ -15,8 +15,13 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from dataclasses import dataclass, replace
 from pathlib import Path
+
+# 自定义 provider 目录 + 内存 cfg 热改的互斥(server 多线程下防「读旧表→各自改→后写覆盖」)。
+# 可重入:handler 里套着调 load_custom/save_custom 不自锁死。
+CUSTOM_LOCK = threading.RLock()
 
 # 控制台添加 provider 时写入 .env 的占位 key;真实 key 永远从环境读、绝不落盘。
 # 历史上这个字面量在 server.py / openai_compat.py 各写一份,现统一到此。
@@ -87,10 +92,12 @@ def load_custom(home: Path) -> list[dict]:
 
 
 def save_custom(home: Path, providers: list[dict]) -> None:
-    """保存自定义 provider 列表到 JSON 文件。"""
+    """保存自定义 provider 列表到 JSON 文件(tmp+replace 原子写)。"""
     p = _custom_path(home)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({"providers": providers}, ensure_ascii=False, indent=2), "utf-8")
+    tmp = p.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps({"providers": providers}, ensure_ascii=False, indent=2), "utf-8")
+    os.replace(tmp, p)
 
 
 def custom_map(home: Path) -> dict:

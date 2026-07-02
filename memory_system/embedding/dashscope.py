@@ -60,6 +60,8 @@ class DashScopeProvider(EmbeddingProvider):
             raise EmbeddingError(f"HTTP {e.code}: {e.read().decode()[:500]}") from e
         except urllib.error.URLError as e:
             raise EmbeddingError(f"网络错误: {e.reason}") from e
+        except TimeoutError as e:  # socket 超时不属 URLError,单独收敛(与 openai_compat 一致)
+            raise EmbeddingError("请求超时(30s)") from e
 
         # OpenAI 兼容:data 按 index 排序后取 embedding
         items = sorted(data["data"], key=lambda d: d["index"])

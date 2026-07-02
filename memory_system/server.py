@@ -15,11 +15,15 @@ API:
   POST /api/chunk    {path, provider?, model?}      调切块 agent,落工作文件
   POST /api/segments {path, segments}               存人工编辑后的段(uuid 服务端重算)
   POST /api/segments/delete {session_id|path, seg_ids, force?}  删段(改 chunks;已提取段需 force)
-  POST /api/extract  {path, seg_ids?, provider?, model?}  逐段提取五件套,落 staging(按块回滚)
+  POST /api/extract  {path, seg_ids?, provider?, model?}  逐段提取五件套,并发+逐条落 staging(按块回滚)
   POST /api/confirm  {path|session_id, stage_id}    确认 staging 条目入库
   POST /api/reject   {path|session_id, stage_id, reason?}  拒绝 staging 条目(打回重做,留痕)
   POST /api/staging/edit {path|session_id, stage_id, fields}  编辑 staging 条目
   POST /api/staging/delete {path|session_id, stage_id}  干净删除未入库 staging 条目(不留痕)
+  POST /api/staging/retry/clear {session_id|path, seg_ids}  关闭/忽略提取失败卡(清 retry 记录)
+  POST /api/memory/edit {public_id, fields}  编辑已入库 episode 的正文四件(改 overview 重嵌)
+  DELETE /api/memory?public_id=...  真删一条 episode(碎片正本 + DB;孤儿 node 保留并回报)
+  DELETE /api/node?label=...        真删一个 node(碎片 + DB;并从引用它的 episode 碎片摘除)
 """
 
 from __future__ import annotations
@@ -45,6 +49,10 @@ _STATIC_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js": "application/javascript; charset=utf-8",
 }
+
+# 蒸馏区批量提取的并发段数:慢 I/O(逐段 LLM 调用)并发,落盘仍在主线程串行(见
+# extract.extract_segments)。保守取 4——够提速,又不至于把 claude_cli 子进程 / API 速率打爆。
+EXTRACT_MAX_WORKERS = 4
 
 # provider 知识(内置目录 / 自定义增删 / 可用性 / key 状态 / 掩码 / 占位 key)统一在
 # memory_system.agent.registry;.env 写回在 env.update_dotenv;送前端的 uuid 剥离在
@@ -179,12 +187,16 @@ def make_handler(cfg: Config):
             import os as _os2
             from memory_system.env import load_dotenv
 
-            # 重新加载 .env,让手动编辑的 key 即时生效(override=True 覆盖已有值)
-            load_dotenv(cfg.home / ".env", override=True)
-            # 同步更新内存 cfg 的 custom_providers(可能刚通过控制台添加/删除)
-            new_cp = registry.custom_map(cfg.home)
-            if new_cp != cfg.agent.custom_providers:
-                object.__setattr__(cfg, 'agent', replace(cfg.agent, custom_providers=new_cp))
+            # 重新加载 .env:只刷新「本来就来自 .env 的键」(env._dotenv_owned),
+            # shell export 的真 key 永不被 .env 的占位/旧值覆盖(修复:旧代码
+            # override=True 会让打开一次控制台就把 export 的真 key 冲成占位 key)。
+            load_dotenv(cfg.home / ".env")
+            # 同步更新内存 cfg 的 custom_providers(可能刚通过控制台添加/删除)。
+            # cfg.agent 热改统一在 CUSTOM_LOCK 下做,防多线程用陈旧快照互相覆盖。
+            with registry.CUSTOM_LOCK:
+                new_cp = registry.custom_map(cfg.home)
+                if new_cp != cfg.agent.custom_providers:
+                    object.__setattr__(cfg, 'agent', replace(cfg.agent, custom_providers=new_cp))
 
             providers = registry.providers_info(cfg)
             agents = {}
@@ -246,22 +258,23 @@ def make_handler(cfg: Config):
                 return self._json({"error": "缺少 provider 或 model"}, 400)
 
             env_path = cfg.home / ".env"
-            try:
-                update_dotenv(env_path, updates)
-            except OSError as e:
-                return self._json({"error": f"写入 .env 失败: {e}"}, 500)
+            with registry.CUSTOM_LOCK:
+                try:
+                    update_dotenv(env_path, updates)
+                except OSError as e:
+                    return self._json({"error": f"写入 .env 失败: {e}"}, 500)
 
-            # 更新内存中的 cfg(绕过 frozen),让 GET /api/agent/config 即时反映变更
-            new_agent = cfg.agent
-            if "MEMORY_AGENT_CHUNK_PROVIDER" in updates:
-                new_agent = replace(new_agent, chunk_provider=updates["MEMORY_AGENT_CHUNK_PROVIDER"])
-            if "MEMORY_AGENT_EXTRACT_PROVIDER" in updates:
-                new_agent = replace(new_agent, extract_provider=updates["MEMORY_AGENT_EXTRACT_PROVIDER"])
-            if "MEMORY_AGENT_CHUNK_MODEL" in updates:
-                new_agent = replace(new_agent, chunk_model=updates["MEMORY_AGENT_CHUNK_MODEL"])
-            if "MEMORY_AGENT_EXTRACT_MODEL" in updates:
-                new_agent = replace(new_agent, extract_model=updates["MEMORY_AGENT_EXTRACT_MODEL"])
-            object.__setattr__(cfg, 'agent', new_agent)
+                # 更新内存中的 cfg(绕过 frozen),让 GET /api/agent/config 即时反映变更
+                new_agent = cfg.agent
+                if "MEMORY_AGENT_CHUNK_PROVIDER" in updates:
+                    new_agent = replace(new_agent, chunk_provider=updates["MEMORY_AGENT_CHUNK_PROVIDER"])
+                if "MEMORY_AGENT_EXTRACT_PROVIDER" in updates:
+                    new_agent = replace(new_agent, extract_provider=updates["MEMORY_AGENT_EXTRACT_PROVIDER"])
+                if "MEMORY_AGENT_CHUNK_MODEL" in updates:
+                    new_agent = replace(new_agent, chunk_model=updates["MEMORY_AGENT_CHUNK_MODEL"])
+                if "MEMORY_AGENT_EXTRACT_MODEL" in updates:
+                    new_agent = replace(new_agent, extract_model=updates["MEMORY_AGENT_EXTRACT_MODEL"])
+                object.__setattr__(cfg, 'agent', new_agent)
 
             self._json({"ok": True, "updated": updates,
                         "restart_required": True,
@@ -367,7 +380,7 @@ def make_handler(cfg: Config):
                     continue
                 items.append(
                     {"session_id": i.session_id, "path": str(i.path), "cwd": i.cwd,
-                     "mtime": i.mtime, "size": i.size, "line_count": i.line_count,
+                     "mtime": i.mtime, "size": i.size,
                      "turn_count": len(ct.turns), "maybe_writing": i.maybe_writing,
                      "touched": i.session_id in touched,
                      "imported": i.path.resolve() in imports})
@@ -380,7 +393,10 @@ def make_handler(cfg: Config):
             path = _confine((q.get("path") or [""])[0])
             if path is None or not path.exists():
                 return self._json({"error": "路径越界或文件不存在"}, 404)
-            info = describe(path)
+            try:
+                info = describe(path)
+            except OSError:  # exists 到 stat 之间被清理
+                return self._json({"error": "文件已被清理"}, 404)
             ct = preview_cache.get(cfg.preview_cache_dir, path, mtime=info.mtime)
             con = connect(cfg.db_path)
             try:
@@ -412,8 +428,10 @@ def make_handler(cfg: Config):
                 "/api/confirm": self._api_confirm,
                 "/api/reject": self._api_reject,
                 "/api/archive": self._api_archive,
+                "/api/memory/edit": self._api_edit_memory,
                 "/api/staging/edit": self._api_staging_edit,
                 "/api/staging/delete": self._api_staging_delete,
+                "/api/staging/retry/clear": self._api_clear_retry,
                 "/api/agent/test": self._api_agent_test,
                 "/api/agent/config": self._api_agent_config_post,
                 "/api/agent/providers": self._api_add_provider,
@@ -423,30 +441,49 @@ def make_handler(cfg: Config):
             handler = routes.get(u.path)
             if handler is None:
                 return self._send(404, b"not found", "text/plain")
-            n = int(self.headers.get("Content-Length", 0))
+            body = self._read_json_body()
+            if body is None:
+                return
+            return handler(body)
+
+        # 请求体上限:导入大 jsonl 也远够;再大直接拒,防把内存吃穿(仅绑本机,防御性)。
+        _MAX_BODY = 128 * 1024 * 1024
+
+        def _read_json_body(self) -> dict | None:
+            """读并解析 POST/PUT 请求体。非法 Content-Length / 超限 / 非 JSON → 回错并返回 None。"""
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+            except (TypeError, ValueError):
+                self._json({"error": "Content-Length 非法"}, 400)
+                return None
+            if n < 0 or n > self._MAX_BODY:
+                self._json({"error": f"请求体过大(>{self._MAX_BODY // (1024 * 1024)}MB)"}, 413)
+                return None
             try:
                 body = json.loads(self.rfile.read(n) or b"{}")
             except json.JSONDecodeError:
-                return self._json({"error": "请求体非 JSON"}, 400)
-            return handler(body)
+                self._json({"error": "请求体非 JSON"}, 400)
+                return None
+            return body
 
         def do_DELETE(self) -> None:
             u = urlparse(self.path)
+            qs = parse_qs(u.query)
             if u.path == "/api/agent/providers":
-                qs = parse_qs(u.query)
-                pid = (qs.get("id") or [""])[0].strip()
-                return self._api_remove_provider(pid)
+                return self._api_remove_provider((qs.get("id") or [""])[0].strip())
+            if u.path == "/api/memory":
+                return self._api_delete_memory((qs.get("public_id") or [""])[0].strip())
+            if u.path == "/api/node":
+                return self._api_delete_node((qs.get("label") or [""])[0])
             self._send(404, b"not found", "text/plain")
 
         def do_PUT(self) -> None:
             u = urlparse(self.path)
             if u.path != "/api/agent/providers":
                 return self._send(404, b"not found", "text/plain")
-            n = int(self.headers.get("Content-Length", 0))
-            try:
-                body = json.loads(self.rfile.read(n) or b"{}")
-            except json.JSONDecodeError:
-                return self._json({"error": "请求体非 JSON"}, 400)
+            body = self._read_json_body()
+            if body is None:
+                return
             return self._api_update_provider(body)
 
         # ---- 自定义 provider 管理 ----
@@ -486,35 +523,36 @@ def make_handler(cfg: Config):
             pid = _re.sub(r"_+", "_", pid).strip("_")
             env_var = pid.upper() + "_API_KEY"
 
-            # 去重
-            existing = registry.load_custom(cfg.home)
-            if any(p["id"] == pid for p in existing):
-                return self._json({"error": f"provider id {pid!r} 已存在"}, 409)
-
             from datetime import datetime, timezone
 
             placeholder = registry.PLACEHOLDER_KEY
-            cp = {
-                "id": pid,
-                "name": name,
-                "base_url": base_url.rstrip("/"),
-                "api_key_env": env_var,
-                "default_model": model or "",
-                "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            }
+            with registry.CUSTOM_LOCK:
+                # 去重(锁内读改写,防并发添加互相覆盖)
+                existing = registry.load_custom(cfg.home)
+                if any(p["id"] == pid for p in existing):
+                    return self._json({"error": f"provider id {pid!r} 已存在"}, 409)
 
-            # 写 .env:占位 key + 同步环境
-            update_dotenv(cfg.home / ".env", {env_var: placeholder})
+                cp = {
+                    "id": pid,
+                    "name": name,
+                    "base_url": base_url.rstrip("/"),
+                    "api_key_env": env_var,
+                    "default_model": model or "",
+                    "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                }
 
-            # 保存到 custom_providers.json
-            existing.append(cp)
-            registry.save_custom(cfg.home, existing)
+                # 写 .env:占位 key + 同步环境
+                update_dotenv(cfg.home / ".env", {env_var: placeholder})
 
-            # 更新内存 cfg
-            new_cp_map = dict(cfg.agent.custom_providers)
-            new_cp_map[pid] = {"base_url": cp["base_url"], "api_key_env": env_var,
-                               "default_model": cp["default_model"]}
-            object.__setattr__(cfg, 'agent', replace(cfg.agent, custom_providers=new_cp_map))
+                # 保存到 custom_providers.json
+                existing.append(cp)
+                registry.save_custom(cfg.home, existing)
+
+                # 更新内存 cfg
+                new_cp_map = dict(cfg.agent.custom_providers)
+                new_cp_map[pid] = {"base_url": cp["base_url"], "api_key_env": env_var,
+                                   "default_model": cp["default_model"]}
+                object.__setattr__(cfg, 'agent', replace(cfg.agent, custom_providers=new_cp_map))
 
             self._json({
                 "ok": True,
@@ -542,22 +580,23 @@ def make_handler(cfg: Config):
             if not base_url.startswith("https://") and not base_url.startswith("http://"):
                 return self._json({"error": "base_url 必须以 http:// 或 https:// 开头"}, 400)
 
-            existing = registry.load_custom(cfg.home)
-            idx = next((i for i, p in enumerate(existing) if p.get("id") == pid), None)
-            if idx is None:
-                return self._json({"error": f"provider {pid!r} 不存在"}, 404)
+            with registry.CUSTOM_LOCK:
+                existing = registry.load_custom(cfg.home)
+                idx = next((i for i, p in enumerate(existing) if p.get("id") == pid), None)
+                if idx is None:
+                    return self._json({"error": f"provider {pid!r} 不存在"}, 404)
 
-            cp = dict(existing[idx])
-            cp["name"] = name
-            cp["base_url"] = base_url.rstrip("/")
-            cp["default_model"] = model
-            existing[idx] = cp
-            registry.save_custom(cfg.home, existing)
+                cp = dict(existing[idx])
+                cp["name"] = name
+                cp["base_url"] = base_url.rstrip("/")
+                cp["default_model"] = model
+                existing[idx] = cp
+                registry.save_custom(cfg.home, existing)
 
-            new_cp_map = dict(cfg.agent.custom_providers)
-            new_cp_map[pid] = {"base_url": cp["base_url"], "api_key_env": cp["api_key_env"],
-                               "default_model": cp.get("default_model", "")}
-            object.__setattr__(cfg, 'agent', replace(cfg.agent, custom_providers=new_cp_map))
+                new_cp_map = dict(cfg.agent.custom_providers)
+                new_cp_map[pid] = {"base_url": cp["base_url"], "api_key_env": cp["api_key_env"],
+                                   "default_model": cp.get("default_model", "")}
+                object.__setattr__(cfg, 'agent', replace(cfg.agent, custom_providers=new_cp_map))
 
             self._json({"ok": True, "provider": cp})
 
@@ -568,35 +607,36 @@ def make_handler(cfg: Config):
             if registry.is_builtin(pid):
                 return self._json({"error": f"内置 provider {pid!r} 不可删除"}, 403)
 
-            existing = registry.load_custom(cfg.home)
-            cp = next((p for p in existing if p["id"] == pid), None)
-            if not cp:
-                return self._json({"error": f"provider {pid!r} 不存在"}, 404)
+            with registry.CUSTOM_LOCK:
+                existing = registry.load_custom(cfg.home)
+                cp = next((p for p in existing if p["id"] == pid), None)
+                if not cp:
+                    return self._json({"error": f"provider {pid!r} 不存在"}, 404)
 
-            # 不移除 .env 中的 key 变量(用户可能以后还要用);只删 JSON 条目
-            existing = [p for p in existing if p["id"] != pid]
-            registry.save_custom(cfg.home, existing)
+                # 不移除 .env 中的 key 变量(用户可能以后还要用);只删 JSON 条目
+                existing = [p for p in existing if p["id"] != pid]
+                registry.save_custom(cfg.home, existing)
 
-            # 更新内存 cfg
-            new_cp_map = dict(cfg.agent.custom_providers)
-            new_cp_map.pop(pid, None)
-            new_agent = replace(cfg.agent, custom_providers=new_cp_map)
-            env_updates: dict[str, str] = {}
+                # 更新内存 cfg
+                new_cp_map = dict(cfg.agent.custom_providers)
+                new_cp_map.pop(pid, None)
+                new_agent = replace(cfg.agent, custom_providers=new_cp_map)
+                env_updates: dict[str, str] = {}
 
-            # 如果当前 provider 正是被删的,回退到默认。role 专用 provider 用空值
-            # 表示回落到全局默认;否则会留下悬空 provider id。
-            if cfg.agent.provider == pid:
-                env_updates["MEMORY_AGENT_PROVIDER"] = "claude_cli"
-                new_agent = replace(new_agent, provider="claude_cli")
-            if cfg.agent.chunk_provider == pid:
-                env_updates["MEMORY_AGENT_CHUNK_PROVIDER"] = ""
-                new_agent = replace(new_agent, chunk_provider="")
-            if cfg.agent.extract_provider == pid:
-                env_updates["MEMORY_AGENT_EXTRACT_PROVIDER"] = ""
-                new_agent = replace(new_agent, extract_provider="")
-            if env_updates:
-                update_dotenv(cfg.home / ".env", env_updates)
-            object.__setattr__(cfg, 'agent', new_agent)
+                # 如果当前 provider 正是被删的,回退到默认。role 专用 provider 用空值
+                # 表示回落到全局默认;否则会留下悬空 provider id。
+                if cfg.agent.provider == pid:
+                    env_updates["MEMORY_AGENT_PROVIDER"] = "claude_cli"
+                    new_agent = replace(new_agent, provider="claude_cli")
+                if cfg.agent.chunk_provider == pid:
+                    env_updates["MEMORY_AGENT_CHUNK_PROVIDER"] = ""
+                    new_agent = replace(new_agent, chunk_provider="")
+                if cfg.agent.extract_provider == pid:
+                    env_updates["MEMORY_AGENT_EXTRACT_PROVIDER"] = ""
+                    new_agent = replace(new_agent, extract_provider="")
+                if env_updates:
+                    update_dotenv(cfg.home / ".env", env_updates)
+                object.__setattr__(cfg, 'agent', new_agent)
 
             self._json({"ok": True, "removed": pid})
 
@@ -706,6 +746,23 @@ def make_handler(cfg: Config):
             doc = staging_store.load(cfg.staging_episodes_dir, session_id)
             self._json({"ok": True, **ui_staging(doc)})
 
+        def _api_clear_retry(self, body) -> None:
+            """关闭/忽略提取失败卡:按 seg_id 从 retry 列表移除(不动 episodes、不留痕)。
+
+            body: {session_id|path, seg_ids:[...]}。人工判定这段不再重试时清掉告警。
+            """
+            from memory_system import staging_store
+
+            session_id = self._session_for_staging(body)
+            if session_id is None:
+                return
+            seg_ids = body.get("seg_ids")
+            if not isinstance(seg_ids, list) or not seg_ids:
+                return self._json({"error": "缺 seg_ids 列表"}, 400)
+            staging_store.clear_retry(cfg.staging_episodes_dir, session_id, [str(x) for x in seg_ids])
+            doc = staging_store.load(cfg.staging_episodes_dir, session_id)
+            self._json({"ok": True, **ui_staging(doc)})
+
         def _api_archive(self, body) -> None:
             from memory_system import archive
 
@@ -717,6 +774,61 @@ def make_handler(cfg: Config):
             except archive.ArchiveError as e:
                 return self._json({"error": str(e)}, 400)
             self._json({"ok": True, "public_id": public_id})
+
+        def _api_edit_memory(self, body) -> None:
+            """编辑已入库 episode 的正文四件(overview/summary/highlights/salience_tier)。
+
+            改 overview 才重嵌(用当前 embedding provider)。回更新后的整条 memory + 报告
+            (changed/reembedded),供前端刷新面板。source_text/nodes 不可改(editor 白名单挡)。
+            """
+            from memory_system import editor, views
+            from memory_system.embedding import get_provider
+
+            public_id = str(body.get("public_id", "")).strip()
+            fields = body.get("fields")
+            if not public_id:
+                return self._json({"error": "缺 public_id"}, 400)
+            if not isinstance(fields, dict):
+                return self._json({"error": "缺 fields"}, 400)
+            try:
+                rep = editor.edit_episode(cfg, public_id, fields, get_provider(cfg.embedding))
+            except editor.EditError as e:
+                return self._json({"error": str(e)}, 400)
+            self._json({"ok": True, "public_id": rep.public_id,
+                        "changed": rep.changed, "reembedded": rep.reembedded,
+                        "memory": views.read_memory(cfg, public_id)})
+
+        def _api_delete_memory(self, public_id: str) -> None:
+            """真删一条 episode(碎片正本 + DB 索引/膜/向量/FTS,区别于 archive 软降级)。
+
+            回 orphaned_nodes:删后不再挂任何 episode、碎片仍在的 node,供前端提示用户再清理。
+            """
+            from memory_system import archive
+
+            if not public_id:
+                return self._json({"error": "缺 public_id"}, 400)
+            try:
+                rep = archive.delete_episode(cfg, public_id)
+            except archive.ArchiveError as e:
+                return self._json({"error": str(e)}, 404)
+            self._json({"ok": True, "public_id": rep.public_id,
+                        "orphaned_nodes": rep.orphaned_nodes})
+
+        def _api_delete_node(self, label: str) -> None:
+            """真删一个 node(碎片 + DB 节点/别名/膜),并从所有引用它的 episode 碎片摘除该 label。
+
+            回 dereferenced_episodes:被摘除引用的 episode public_id(episode 本身保留)。
+            """
+            from memory_system import archive
+
+            if not (label or "").strip():
+                return self._json({"error": "缺 label"}, 400)
+            try:
+                rep = archive.delete_node(cfg, label)
+            except archive.ArchiveError as e:
+                return self._json({"error": str(e)}, 404)
+            self._json({"ok": True, "label": rep.label,
+                        "dereferenced_episodes": rep.dereferenced_episodes})
 
         def _api_chunk(self, body) -> None:
             from dataclasses import replace as _replace
@@ -798,16 +910,23 @@ def make_handler(cfg: Config):
                 return self._json({"kind": "unavailable", "error": f"provider 不可用: {why}"}, 400)
 
             nodes = existing_nodes(cfg.nodes_dir)
-            batch = extract_segments(ct, segments, provider, nodes, model=model,
-                                     timeout=agent_cfg.timeout_s, max_retries=agent_cfg.max_retries)
             sdir = cfg.staging_episodes_dir
             ts_by_turn = {t.idx: t.timestamp for t in ct.turns}
-            for seg, res, src in batch.staged:
+
+            # 逐条落盘:每段一完成立即写 staging,故批量提取中途退出已完成的不丢。
+            # extract_segments 保证回调都在主线程串行调用(无并发写 staging 文件)。
+            def _on_staged(seg, res, src):
                 staging_store.upsert_episode(sdir, ct.session_id, str(path), seg, res, src,
                                              created_at=ts_by_turn.get(seg["start_turn"]))
-            for seg, errors in batch.failed:
+
+            def _on_failed(seg, errors):
                 staging_store.append_retry(sdir, ct.session_id, str(path), seg,
                                            provider=agent_cfg.provider, model=model, errors=errors)
+
+            batch = extract_segments(ct, segments, provider, nodes, model=model,
+                                     timeout=agent_cfg.timeout_s, max_retries=agent_cfg.max_retries,
+                                     max_workers=EXTRACT_MAX_WORKERS,
+                                     on_staged=_on_staged, on_failed=_on_failed)
             doc = staging_store.load(sdir, ct.session_id)
             self._json({"ok": True, "staged": len(batch.staged), "failed": len(batch.failed),
                         **ui_staging(doc)})

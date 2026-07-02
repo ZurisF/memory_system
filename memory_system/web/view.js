@@ -3,7 +3,11 @@
  * galaxy 移植自 front_references/browse.html,改两点:
  *   1) 容器内定位(坐标用 canvas.getBoundingClientRect 换算,不用 window/fixed);
  *   2) mock → 真数据:首次切到「查看」拉 /api/memories;点节点拉 /api/node、点条目拉 /api/memory。
- * node↔node 边 = 后端按共享情景算的共现边(edges[].via 即解释)。本轮只读,不做编辑写回。
+ * node↔node 边 = 后端按共享情景算的共现边(edges[].via 即解释)。
+ * 面板支持**真删**(误入库):删 episode → DELETE /api/memory(孤儿 node 回报);删 node →
+ * DELETE /api/node(并从引用它的 episode 碎片摘除)。删后 unfocus + 重拉 /api/memories 刷新图。
+ * episode 面板还支持**编辑写回**:正文四件(overview/summary/highlights/salience_tier)→
+ * POST /api/memory/edit(改 overview 才重嵌);source_text / nodes 只读(概念图编辑下一轮)。
  */
 (function () {
 
@@ -277,11 +281,29 @@ var Graph = (function () {
           tierClass(ep.salience_tier) + '">T' + ep.salience_tier + '</span><div class="id">' +
           esc(ep.public_id) + '</div><div class="ov">' + esc(ep.overview) + '</div></div>';
       });
-      h += '<div class="gp-note">只读 · 编辑写回下一轮</div></div>';
+      h += '<div class="gp-acts"><button class="gp-del" id="gp-del-node">删除此 node</button></div></div>';
       openPanel(h);
       el("gp-content").querySelectorAll(".gp-ep").forEach(function (card) {
         card.addEventListener("click", function () { showEpisodePanel(card.dataset.ep); });
       });
+      var delBtn = el("gp-del-node");
+      if (delBtn) delBtn.addEventListener("click", function () {
+        var nEp = (d.episodes || []).length;
+        var msg = "删除 node「" + d.label + "」?\n碎片正本 + 索引(节点/别名/膜)将永久移除,不可恢复。";
+        if (nEp > 0) msg += "\n\n注意:将从 " + nEp + " 条 episode 碎片摘除对该 node 的引用(episode 本身保留)。";
+        if (!window.confirm(msg)) return;
+        once("del-node:" + d.label, function () {
+          return delJSON("/api/node?label=" + encodeURIComponent(d.label)).then(function (res) {
+            if (res.error) { toast("删除失败:" + res.error, true); return; }
+            var dn = (res.dereferenced_episodes || []).length;
+            toast("已删除 node「" + d.label + "」" + (dn ? ",并从 " + dn + " 条 episode 摘除引用" : ""));
+            unfocus(); closePanel(); load();
+          });
+        }, delBtn);
+      });
+    }).catch(function (err) {
+      openPanel('<div class="gp-head"><div class="gp-label">' + esc(label) +
+        '</div></div><div class="gp-body gp-val">加载失败:' + esc(String(err)) + '</div>');
     });
   }
 
@@ -307,7 +329,8 @@ var Graph = (function () {
         d.nodes.forEach(function (lb) { h += '<span class="gp-chip gp-node-link" data-node="' + esc(lb) + '">' + esc(lb) + '</span>'; });
         h += '</div>';
       }
-      h += '<div class="gp-note">只读 · 编辑写回下一轮</div></div>';
+      h += '<div class="gp-acts"><button class="gp-edit-btn" id="gp-edit-ep">编辑</button>' +
+        '<button class="gp-del" id="gp-del-ep">删除此记忆</button></div></div>';
       openPanel(h);
       el("gp-content").querySelectorAll(".gp-node-link").forEach(function (chip) {
         chip.style.cursor = "pointer";
@@ -317,6 +340,94 @@ var Graph = (function () {
           showNodePanel(chip.dataset.node);
         });
       });
+      var editE = el("gp-edit-ep");
+      if (editE) editE.addEventListener("click", function () { showEpisodeEditor(d); });
+      var delE = el("gp-del-ep");
+      if (delE) delE.addEventListener("click", function () {
+        if (!window.confirm("删除记忆「" + d.public_id + "」?\n碎片正本 + 索引(向量/膜/FTS)将永久移除,不可恢复。")) return;
+        once("del-ep:" + d.public_id, function () {
+          return delJSON("/api/memory?public_id=" + encodeURIComponent(d.public_id)).then(function (res) {
+            if (res.error) { toast("删除失败:" + res.error, true); return; }
+            var orphans = res.orphaned_nodes || [];
+            toast("已删除记忆 " + d.public_id +
+                  (orphans.length ? ";因此变孤儿的 node:" + orphans.join("、") + "(可在图中单独删除)" : ""));
+            unfocus(); closePanel(); load();
+          });
+        }, delE);
+      });
+    }).catch(function (err) {
+      openPanel('<div class="gp-head"><div class="gp-label">' + esc(pub) +
+        '</div></div><div class="gp-body gp-val">加载失败:' + esc(String(err)) + '</div>');
+    });
+  }
+
+  /* ---- 编辑态(正文四件:overview/summary/highlights/salience_tier)---- */
+  function showEpisodeEditor(d) {
+    var tiers = [1, 2, 3].map(function (t) { return '<option value="' + t + '">T' + t + '</option>'; }).join("");
+    var h = '<div class="gp-head"><div class="gp-label">' + esc(d.public_id) +
+      '</div><div class="gp-type">编辑中</div></div><div class="gp-body gp-edit">';
+    h += '<div class="gp-lbl">Overview</div><textarea id="ed-ov" rows="3"></textarea>';
+    h += '<div class="gp-lbl">Summary</div><textarea id="ed-sm" rows="4"></textarea>';
+    h += '<div class="gp-lbl">显著性 tier</div><select id="ed-tier">' + tiers + '</select>';
+    h += '<div class="gp-lbl">高光 <span class="gp-ro">≤3 条</span></div><div id="ed-hls"></div>';
+    h += '<button class="gp-hl-add" id="ed-hl-add">+ 添加高光</button>';
+    h += '<div class="gp-lbl">原文 source_text <span class="gp-ro">只读</span></div>' +
+      '<div class="gp-mono">' + esc(d.source_text) + '</div>';
+    if (d.nodes && d.nodes.length) {
+      h += '<div class="gp-lbl">所属 node <span class="gp-ro">只读 · 概念图编辑下一轮</span></div><div class="gp-chips">';
+      d.nodes.forEach(function (lb) { h += '<span class="gp-chip">' + esc(lb) + '</span>'; });
+      h += '</div>';
+    }
+    h += '<div class="gp-acts"><button class="gp-cancel" id="ed-cancel">取消</button>' +
+      '<button class="gp-save" id="ed-save">保存</button></div></div>';
+    openPanel(h);
+
+    el("ed-ov").value = d.overview || "";
+    el("ed-sm").value = d.summary || "";
+    el("ed-tier").value = String(d.salience_tier || 1);
+
+    var hls = (d.highlights || []).map(function (x) { return { text: x.text || "", tag: x.tag || "" }; });
+    function renderHls() {
+      var c = el("ed-hls"); c.innerHTML = "";
+      hls.forEach(function (hl, i) {
+        var row = document.createElement("div"); row.className = "gp-hl-row";
+        var ta = document.createElement("textarea"); ta.rows = 2; ta.placeholder = "逐字高光原话"; ta.value = hl.text;
+        ta.addEventListener("input", function () { hls[i].text = ta.value; });
+        var tag = document.createElement("input"); tag.placeholder = "tag"; tag.value = hl.tag;
+        tag.addEventListener("input", function () { hls[i].tag = tag.value; });
+        var rm = document.createElement("button"); rm.className = "rm"; rm.textContent = "×"; rm.title = "删除这条高光";
+        rm.addEventListener("click", function () { hls.splice(i, 1); renderHls(); });
+        row.appendChild(ta); row.appendChild(tag); row.appendChild(rm); c.appendChild(row);
+      });
+      el("ed-hl-add").style.display = hls.length >= 3 ? "none" : "";
+    }
+    renderHls();
+    el("ed-hl-add").addEventListener("click", function () {
+      if (hls.length >= 3) return;
+      hls.push({ text: "", tag: "" }); renderHls();
+    });
+
+    el("ed-cancel").addEventListener("click", function () { showEpisodePanel(d.public_id); });
+    el("ed-save").addEventListener("click", function () {
+      var fields = {
+        overview: el("ed-ov").value.trim(),
+        summary: el("ed-sm").value.trim(),
+        salience_tier: parseInt(el("ed-tier").value, 10),
+        highlights: hls.map(function (x) { return { text: (x.text || "").trim(), tag: (x.tag || "").trim() }; })
+          .filter(function (x) { return x.text; }),
+      };
+      if (!fields.overview) { toast("overview 不能为空", true); return; }
+      if (!fields.summary) { toast("summary 不能为空", true); return; }
+      var btn = el("ed-save");
+      once("edit-ep:" + d.public_id, function () {
+        return postJSON("/api/memory/edit", { public_id: d.public_id, fields: fields }).then(function (res) {
+          if (res.error) { toast("保存失败:" + res.error, true); return; }
+          toast((res.changed && res.changed.length)
+            ? "已保存(" + res.changed.join("、") + (res.reembedded ? ";已重嵌" : "") + ")"
+            : "无改动");
+          showEpisodePanel(d.public_id); load();
+        });
+      }, btn);
     });
   }
 

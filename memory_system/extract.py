@@ -15,6 +15,8 @@ extract_json → 五件套契约**严校** → ExtractResult。
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -206,19 +208,55 @@ def extract_segments(
     model: str,
     timeout: int,
     max_retries: int,
+    max_workers: int = 1,
+    on_staged: Callable[[dict, ExtractResult, str], None] | None = None,
+    on_failed: Callable[[dict, list[str]], None] | None = None,
 ) -> ExtractBatch:
     """按块回滚:逐段独立提取,坏段进 failed 不中断;好段进 staged。
 
     每段从其回合区间渲染 source_text(同源、逐字),提取结果与原文一并交给上层落 staging。
+
+    **并发 + 逐条落盘**(max_workers>1 时):每段的慢 I/O(LLM 调用)在线程池里并发跑,
+    但结果消费(append batch + on_staged/on_failed 回调)一律回到**主线程串行**执行
+    (`as_completed` 在调用线程逐个 yield)——故回调即落盘也无需锁、不竞争 staging 文件。
+    每段一完成立即经回调落盘 ⇒ 批量提取中途退出,已完成的段不丢。
+    provider 实现都是无状态的(claude_cli 每调起独立子进程、openai_compat urllib 单发),
+    并发安全。max_workers=1(默认)= 纯顺序,确定性,供 CLI / 行为脚本测试沿用。
     """
     batch = ExtractBatch()
-    for seg in segments:
+    if not segments:
+        return batch
+
+    def work(seg: dict) -> tuple[str, dict, object, str | None]:
+        """线程内只做慢活:渲染 + 提取;不碰共享状态、不落盘。"""
         src = render_source_text(ct, seg["start_turn"], seg["end_turn"])
         try:
             res = run_extract(src, nodes, provider, model=model,
                               timeout=timeout, max_retries=max_retries)
+            return ("staged", seg, res, src)
         except ExtractFailed as e:
-            batch.failed.append((seg, e.errors))
-            continue
-        batch.staged.append((seg, res, src))
+            return ("failed", seg, e.errors, None)
+
+    def consume(outcome: tuple[str, dict, object, str | None]) -> None:
+        """主线程串行消费:记 batch + 即时回调落盘。"""
+        kind, seg, payload, src = outcome
+        if kind == "staged":
+            batch.staged.append((seg, payload, src))
+            if on_staged is not None:
+                on_staged(seg, payload, src)
+        else:
+            batch.failed.append((seg, payload))
+            if on_failed is not None:
+                on_failed(seg, payload)
+
+    workers = max(1, min(max_workers, len(segments)))
+    if workers == 1:
+        for seg in segments:
+            consume(work(seg))
+    else:
+        with ThreadPoolExecutor(max_workers=workers,
+                                thread_name_prefix="extract") as ex:
+            futures = [ex.submit(work, seg) for seg in segments]
+            for fut in as_completed(futures):
+                consume(fut.result())
     return batch

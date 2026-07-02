@@ -35,14 +35,25 @@ def parse_env(text: str) -> dict[str, str]:
     return out
 
 
+# 由 .env(或控制台写回)设置进 os.environ 的键。重复 load 时这些键允许刷新
+# (跟随 .env 的手动编辑);shell 里真实 export 的键不在此集合,永不被 .env 覆盖。
+_dotenv_owned: set[str] = set()
+
+
 def load_dotenv(path: Path, *, override: bool = False) -> dict[str, str]:
-    """把 path 里的键值灌进 os.environ。返回实际生效的键值(用于日志/调试)。"""
+    """把 path 里的键值灌进 os.environ。返回实际生效的键值(用于日志/调试)。
+
+    override=False(默认)也会刷新「本来就是 .env 灌进来的键」——这样运行中手动编辑
+    .env 后重新 load 即生效,而 shell export 的真 key 始终优先、绝不被占位值覆盖。
+    """
     if not path.exists():
         return {}
     applied: dict[str, str] = {}
     for key, val in parse_env(path.read_text(encoding="utf-8")).items():
-        if override or key not in os.environ:
-            os.environ[key] = val
+        if override or key not in os.environ or key in _dotenv_owned:
+            if os.environ.get(key) != val:
+                os.environ[key] = val
+            _dotenv_owned.add(key)
             applied[key] = val
     return applied
 
@@ -79,7 +90,11 @@ def update_dotenv(path: Path, updates: dict[str, str]) -> None:
         if key not in updated:
             new_lines.append(f"{key}={val}")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(new_lines) + "\n", "utf-8")
-    # 同步到当前进程环境
+    # 原子写:.env 是 key 落点,绝不让写中途崩溃留半截文件
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text("\n".join(new_lines) + "\n", "utf-8")
+    os.replace(tmp, path)
+    # 同步到当前进程环境;这些键此后归 .env 管(允许后续 load 刷新)
     for key, val in updates.items():
         os.environ[key] = val
+        _dotenv_owned.add(key)

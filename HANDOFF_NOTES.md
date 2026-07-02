@@ -14,9 +14,37 @@
   三条铁律(碎片是正本 / uuid 不上台面 / key 不落盘)见 `ARCHITECTURE.md §2`。
 - **provider 知识已收口**到 `agent/registry.py`(单一来源,2026-06-25);server.py 随之瘦身。
 - 四项工程债 + 边计算性能标记已修(2026-06-25),详见 `S5_NOTES.md`。
+- **P2 前端全局已收口**(2026-06-26):`state.js` ~22 个裸全局收进单一 `ST = {}` 命名空间(轻量路线,
+  非 ES module),8 个 JS 机械改引用。工程债清单见 `ARCHITECTURE.md §10`(P2 已移入「已完成」)。
+- **蒸馏区提取并发 + 逐条落盘**(2026-06-26):`extract_segments` 走线程池(慢 I/O 并发、落盘回主线程
+  串行),每段一完成即落 staging,**中途退出已完成的不丢**;失败段卡内联错误 + 「忽略」关闭(清 retry)。
+- **删除写回(后端 + API + 前端,全做完)**(2026-06-26):`archive.delete_episode` / `delete_node` 真删误入库的
+  episode / node(碎片正本 + DB 同步,删除顺序与 confirm 相反、删后 rebuild 不复活)。CLI `delete {episode,node}` +
+  `DELETE /api/memory|node` + galaxy 详情面板删除按钮(二次 confirm、删 node 提示影响 N 条 episode、删后刷新图)。
+  门:`verify_delete.py`(引擎)+ `verify_view_api.py` 新增 3 道 HTTP 删除门。
+- **编辑写回(后端 + API + 前端,全做完)**(2026-06-26):`editor.edit_episode`(+ `EditError`/`EditReport`)改正本
+  正文四件(overview/summary/highlights/salience_tier);**改 overview 才重嵌**(省额度),落地顺序同 confirm
+  (DB commit 成功后才回写碎片),no-op 不写盘,白名单挡 source_text/nodes。`POST /api/memory/edit` +
+  galaxy episode 面板编辑态。门:`verify_edit.py`(引擎)+ `verify_view_api.py` 1 道 HTTP 编辑门。
+  **下一轮候选**:① 概念图(nodes 膜)编辑——给 episode 增删 node;② 孤儿 episode(删 node 后 0 挂载、
+  galaxy 看不见但仍在库)的可见化/重指派(删 node 时的镜像问题,zuris 已知);③ S6 检索层。
+- **蒸馏屏 nodes 改结构化行**(2026-06-27):S4 五件套编辑器里 nodes 从裸 JSON textarea 改成结构化行
+  (label + action 下拉[新建/命中已有/记为别名] + 别名输入[仅 add_alias 档出现] + 理由 + 删),
+  `collect()` 还原成原 `{label,action,reason,new_alias}` 形状,**后端零改动**(白名单/`_plan_nodes` 不变)。
+  纯前端 `triage.js`(三处)+ `styles.css`(一处),`node --check` 过、无 NUL。
+- **健壮性一轮(2026-07-01,全代码审查后修复)**:碎片正本原子写(tmp+`os.replace`,含 .env/
+  custom_providers/预览缓存);工作态并发锁(新模块 `locks.py`,segments/staging 按 session 互斥,
+  registry.CUSTOM_LOCK 保 provider 目录与 cfg 热改);`GET /api/agent/config` 不再 override=True
+  (shell export 的真 key 不会被 .env 占位冲掉);列表热路径不再全量数行(`describe` 默认
+  `count_lines=False`,`line_count` 从列表 API 退场);rebuild 清空+重灌单事务;前端修一处属性
+  逃逸 XSS(段卡 tag `escAttr`)、裸 fetch 全兜底、三处补 `once()`、切换 transcript 后发者胜。
+  明细见 `ARCHITECTURE.md §10` 已完成首条。全套 verify 绿。
 - 前端仍是零构建原生静态资源,各 JS 模块职责单一,可单独改。
 
 ## 下一步:S6 检索层
+
+> **设计空间与待决清单见 `project/s6_retrieval_design.md`**(2026-06-27 起草,标了 已定/提案/开放/铁律,
+> 供广泛征询)。本节只留底座速查与待厘清纲要,展开在那份文档。
 
 S6 做的是「查询 → 召回 → 排序 → 注入回 Claude Code」。**底座已就位,不用从零起**:
 
@@ -33,6 +61,12 @@ S6 做的是「查询 → 召回 → 排序 → 注入回 Claude Code」。**底
 - 排序信号:`salience_tier`(1–3)、新鲜度、衰减时钟 `last_accessed_at`(注意:这是**运行态**,
   `index rebuild` 会重置为 `activated_at`,非记忆正本——不能当检索质量的唯一依据)。
 - 注入格式与 token 预算。
+- **召回时的别名露出**(2026-06-27 与 zuris 商定方向,待 S6 实现):**别名不全量带**(整池糊上去 = 噪声),
+  改 **grep 锚定**——召回一条 episode 时,拿其所挂 node 的别名去 grep 它的 `source_text`,**只有当某别名
+  字面出现、而规范 label 本身没出现时**,才给重构 agent 附一行桥接(`文中"弥赛亚" = 概念 AGI`)。
+  防的是"弥赛亚=AGI"这类**字面看不出关联的特异私人别名**被重构 agent 误读成无关概念(连 Claude 初读都
+  会误判,正是风险佐证);"记忆库/记忆系统"这类显然别名不必管。位置在 §2 入口(别名精确命中)与
+  §10 重构(禁虚构/防误读)之间,复用现成 grep 基建,活在召回器(或 `read_memory`)里,本轮不写代码。
 - 概念依据看 `project/idea_v2.md` 检索相关章节(召回/激活/衰减)。
 
 ## 高优先风险(S6 也要知道)

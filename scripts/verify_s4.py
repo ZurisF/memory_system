@@ -224,4 +224,57 @@ assert len(nodes) == 1 and nodes[0]["label"] == "Solaris" and "索拉里斯" in 
 assert "Solaris" in render_existing_nodes(nodes) and "索拉里斯" in render_existing_nodes(nodes)
 ok("existing_nodes 读 active node 碎片(label+aliases),喂提取三选一")
 
+# ---- 门 10:并发提取 + 逐条落盘回调(content-keyed,顺序无关)----
+# 慢 I/O 并发跑、消费(回调落盘)回主线程串行 ⇒ 每段一完成即落,中途退出不丢已完成段。
+import threading  # noqa: E402
+
+ctc = mk_ct(50, session="sess-conc")
+segc = manual_segments(ctc, [(1, 10), (11, 20), (21, 30), (31, 40), (41, 50)])
+for i, s in enumerate(segc, 1):
+    s["seg_id"] = f"c{i}"
+
+
+def _conc_responder(system, user, model):  # 段2/4(含这两句)注定坏,与调用顺序无关
+    if "人类第11句" in user or "人类第31句" in user:
+        return make_extraction("", "坏段")
+    return make_extraction("ov", "su")
+
+
+_main_tid = threading.current_thread().ident
+_consume_tids: set = set()
+_staged_cb, _failed_cb = [], []
+
+
+def _on_staged(seg, res, src):
+    _consume_tids.add(threading.current_thread().ident)
+    _staged_cb.append(seg["seg_id"])
+
+
+def _on_failed(seg, errors):
+    _consume_tids.add(threading.current_thread().ident)
+    _failed_cb.append(seg["seg_id"])
+
+
+cbatch = extract_segments(ctc, segc, FakeChatProvider(default_responder=_conc_responder), [],
+                          model="opus", timeout=TIMEOUT, max_retries=0, max_workers=4,
+                          on_staged=_on_staged, on_failed=_on_failed)
+assert {s[0]["seg_id"] for s in cbatch.staged} == {"c1", "c3", "c5"}, cbatch.staged
+assert {s[0]["seg_id"] for s in cbatch.failed} == {"c2", "c4"}, cbatch.failed
+assert set(_staged_cb) == {"c1", "c3", "c5"} and set(_failed_cb) == {"c2", "c4"}
+# 消费/落盘一律回主线程 ⇒ 无并发写 staging 文件的竞争
+assert _consume_tids == {_main_tid}, f"回调应只在主线程: {_consume_tids}"
+ok("并发提取:5段3成2坏(顺序无关),回调逐条触发且全在主线程串行落盘")
+
+# clear_retry:按 seg_id 关闭失败标记,幂等,不动 episodes
+for seg, errs in cbatch.failed:
+    staging_store.append_retry(CFG.staging_episodes_dir, ctc.session_id, ctc.path, seg,
+                               provider="fake", model="opus", errors=errs)
+staging_store.clear_retry(CFG.staging_episodes_dir, ctc.session_id, ["c2"])
+docc = staging_store.load(CFG.staging_episodes_dir, ctc.session_id)
+assert [r["seg_id"] for r in docc["retry"]] == ["c4"], docc["retry"]
+staging_store.clear_retry(CFG.staging_episodes_dir, ctc.session_id, ["c2", "nope"])  # 幂等 + 不存在
+docc2 = staging_store.load(CFG.staging_episodes_dir, ctc.session_id)
+assert [r["seg_id"] for r in docc2["retry"]] == ["c4"]
+ok("clear_retry:按 seg_id 清失败标记,幂等、不存在的 seg_id 无副作用、不动 episodes")
+
 print("S4 提取层 ALL PASS ✅")

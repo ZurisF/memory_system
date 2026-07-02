@@ -6,6 +6,10 @@
   - /api/memory 单条返回五件套 + source_text + 所属 nodes,绝不漏 uuid。
   - /api/node 返回别名/type + 挂载的 active episodes。
   - archive 后默认列表剔除、include_archived=1 仍在;坏 public_id 不穿越。
+  - DELETE /api/memory|node:真删(碎片+DB),删 node 从引用它的 episode 碎片摘除并回报,
+    删 episode 回报孤儿 node;删不存在的回 404。
+  - POST /api/memory/edit:正文四件写回(改 overview 回 reembedded;改 summary 不重嵌);
+    回更新后的 memory;越权字段(source_text)400。
 
 默认 fake 提取产出 nodes=[],故先用 /api/staging/edit 给 staging 注入可预测的膜,
 再 confirm —— 借此构造确定性的共现边。
@@ -78,6 +82,26 @@ def _get(base: str, path: str) -> dict:
 def _get_status(base: str, path: str) -> tuple[int, dict]:
     try:
         with request.urlopen(base + path, timeout=10) as r:
+            return r.status, json.loads(r.read().decode("utf-8"))
+    except HTTPError as e:
+        return e.code, json.loads(e.read().decode("utf-8"))
+
+
+def _post_status(base: str, path: str, body: dict) -> tuple[int, dict]:
+    data = json.dumps(body).encode("utf-8")
+    req = request.Request(base + path, data=data, method="POST",
+                          headers={"Content-Type": "application/json"})
+    try:
+        with request.urlopen(req, timeout=10) as r:
+            return r.status, json.loads(r.read().decode("utf-8"))
+    except HTTPError as e:
+        return e.code, json.loads(e.read().decode("utf-8"))
+
+
+def _delete(base: str, path: str) -> tuple[int, dict]:
+    req = request.Request(base + path, method="DELETE")
+    try:
+        with request.urlopen(req, timeout=10) as r:
             return r.status, json.loads(r.read().decode("utf-8"))
     except HTTPError as e:
         return e.code, json.loads(e.read().decode("utf-8"))
@@ -178,6 +202,26 @@ def main() -> None:
         assert all("overview" in e and "salience_tier" in e for e in nd["episodes"]), nd
         ok("/api/node 返回别名/type + 挂载 active episodes")
 
+        # ---- POST /api/memory/edit:正文四件写回(改 summary 不重嵌、改 overview 重嵌)----
+        r = _post(base, "/api/memory/edit", {"public_id": ep1, "fields": {"summary": "编辑后的 summary"}})
+        assert r.get("ok") and r["reembedded"] is False and r["changed"] == ["summary"], r
+        assert r["memory"]["summary"] == "编辑后的 summary", r["memory"]
+        r = _post(base, "/api/memory/edit",
+                  {"public_id": ep1, "fields": {"overview": "编辑后的 overview", "salience_tier": 2}})
+        assert r.get("ok") and r["reembedded"] is True, r
+        assert set(r["changed"]) == {"overview", "salience_tier"}, r
+        d2 = _get(base, "/api/memory?public_id=" + ep1)
+        assert d2["overview"] == "编辑后的 overview" and d2["summary"] == "编辑后的 summary" \
+            and d2["salience_tier"] == 2, d2
+        assert d2["nodes"] == sorted(["切块", "原子性"]), "编辑正文不该动 nodes"
+        m = _get(base, "/api/memories")
+        e1 = next(x for x in m["episodes"] if x["public_id"] == ep1)
+        assert e1["salience_tier"] == 2 and e1["overview"] == "编辑后的 overview", e1
+        st, _ = _post_status(base, "/api/memory/edit",
+                             {"public_id": ep1, "fields": {"source_text": "想改原文"}})
+        assert st == 400, st
+        ok("POST /api/memory/edit:summary 不重嵌 / overview 重嵌 / 列表反映 / source_text 越权 400")
+
         # ---- archive 后默认剔除、include_archived 仍在 ----
         assert _post(base, "/api/archive", {"public_id": ep2}).get("ok")
         m2 = _get(base, "/api/memories")
@@ -198,6 +242,37 @@ def main() -> None:
         st, _ = _get_status(base, "/api/node?label=" + quote("不存在的节点"))
         assert st == 404, st
         ok("坏 public_id/label 被挡(404),不穿越")
+
+        # ---- DELETE /api/node:真删 + 从引用它的 episode 碎片摘除(含 archived 的 ep2)----
+        st, res = _delete(base, "/api/node?label=" + quote("原子性"))
+        assert st == 200 and res.get("ok"), (st, res)
+        # ep1 active、ep2 archived 都仍在碎片里引用 原子性 → 两条都被摘
+        assert set(res["dereferenced_episodes"]) == {ep1, ep2}, res
+        m = _get(base, "/api/memories?include_archived=1")
+        assert all(n["label"] != "原子性" for n in m["nodes"]), "原子性 应从 nodes 消失"
+        ep1_now = next(e for e in m["episodes"] if e["public_id"] == ep1)
+        assert "原子性" not in ep1_now["nodes"] and "切块" in ep1_now["nodes"], ep1_now
+        st2, _ = _get_status(base, "/api/node?label=" + quote("原子性"))
+        assert st2 == 404, st2
+        ok("DELETE /api/node:碎片+DB 删、ep1/ep2 碎片摘除引用并回报、node 详情 404")
+
+        # ---- DELETE /api/memory:真删 episode,孤儿 node 回报 ----
+        st, res = _delete(base, "/api/memory?public_id=" + ep1)
+        assert st == 200 and res.get("ok") and res["public_id"] == ep1, (st, res)
+        # 原子性 已删,切块 只挂 ep1 → 删 ep1 后 切块 变孤儿
+        assert "切块" in res["orphaned_nodes"], res
+        st2, _ = _get_status(base, "/api/memory?public_id=" + ep1)
+        assert st2 == 404, st2
+        m = _get(base, "/api/memories?include_archived=1")
+        assert all(e["public_id"] != ep1 for e in m["episodes"]), "删掉的 ep1 不应再列出"
+        ok("DELETE /api/memory:碎片+DB 删、孤儿 node(切块)回报、memory 详情 404")
+
+        # ---- 错误路径:删不存在的 episode / node → 404 ----
+        st, _ = _delete(base, "/api/memory?public_id=ep_deadbeef")
+        assert st == 404, st
+        st, _ = _delete(base, "/api/node?label=" + quote("无此概念"))
+        assert st == 404, st
+        ok("DELETE 错误路径:删不存在的 episode / node 回 404")
     finally:
         httpd.shutdown()
         httpd.server_close()

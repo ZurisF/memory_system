@@ -191,7 +191,7 @@ def cmd_diagnose(cfg: Config, args: argparse.Namespace) -> int:
 def cmd_scan(cfg: Config, args: argparse.Namespace) -> int:
     from memory_system.transcript import discover
 
-    infos = discover(cfg.transcripts_root)
+    infos = discover(cfg.transcripts_root, count_lines=True)  # 诊断命令,显式要行数
     if not infos:
         print(f"未发现 transcript(根目录: {cfg.transcripts_root})")
         return 0
@@ -477,6 +477,30 @@ def cmd_archive(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_delete(cfg: Config, args: argparse.Namespace) -> int:
+    from memory_system import archive
+
+    try:
+        if args.target == "episode":
+            rep = archive.delete_episode(cfg, args.public_id)
+            print(f"已删除 episode {rep.public_id}(碎片正本 + DB 索引/膜/向量/FTS,永久移除)")
+            if rep.orphaned_nodes:
+                print("  以下 node 因此变成孤儿(已保留;如确认无用可 `memory-system delete node <label>` 清理):")
+                for lab in rep.orphaned_nodes:
+                    print(f"      {lab}")
+        else:  # node
+            rep = archive.delete_node(cfg, args.label)
+            print(f"已删除 node {rep.label}(碎片正本 + DB 节点/别名/膜,永久移除)")
+            if rep.dereferenced_episodes:
+                print(f"  已从 {len(rep.dereferenced_episodes)} 条 episode 碎片摘除该 node 引用:")
+                for pid in rep.dereferenced_episodes:
+                    print(f"      {pid}")
+    except archive.ArchiveError as e:
+        print(f"删除失败: {e}")
+        return 1
+    return 0
+
+
 def cmd_index(cfg: Config, args: argparse.Namespace) -> int:
     from dataclasses import replace
 
@@ -586,6 +610,14 @@ def build_parser() -> argparse.ArgumentParser:
     av = sub.add_parser("archive", help="审核(S5):把 active 碎片降级为 archived")
     av.add_argument("public_id", help="要归档的 episode public_id,如 ep_a1b2c3d4")
     av.set_defaults(func=cmd_archive)
+
+    dl = sub.add_parser("delete", help="真删:从碎片正本 + DB 永久移除 episode 或 node(区别于 archive 软降级)")
+    dlsub = dl.add_subparsers(dest="target", required=True)
+    dle = dlsub.add_parser("episode", help="删一条 episode(碎片 + DB;因此变孤儿的 node 保留并点名)")
+    dle.add_argument("public_id", help="episode public_id,如 ep_a1b2c3d4")
+    dln = dlsub.add_parser("node", help="删一个 node(碎片 + DB;并从所有引用它的 episode 碎片摘除该引用)")
+    dln.add_argument("label", help="node 的 label")
+    dl.set_defaults(func=cmd_delete)
 
     ixp = sub.add_parser("index", help="索引重建")
     ixsub = ixp.add_subparsers(dest="action", required=True)

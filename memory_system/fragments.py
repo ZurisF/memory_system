@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -310,17 +311,26 @@ def node_path(nodes_dir: Path, label: str) -> Path:
     return nodes_dir / f"{_safe_node_filename(label)}.md"
 
 
+def _atomic_write_text(p: Path, text: str) -> None:
+    """tmp 文件 + os.replace 原子替换。碎片是正本(全系统唯一真相):写盘中途崩溃
+    绝不能留下半截 .md——坏一个碎片,rebuild 就会在 parse 处 fail-fast 整体卡死。
+    tmp 与目标同目录(同文件系统才保证 rename 原子);.md.tmp 不被 `*.md` glob 捡到。"""
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, p)
+
+
 def write_episode(episodes_dir: Path, ep: Episode) -> Path:
     episodes_dir.mkdir(parents=True, exist_ok=True)
     p = episode_path(episodes_dir, ep.public_id)
-    p.write_text(serialize_episode(ep), encoding="utf-8")
+    _atomic_write_text(p, serialize_episode(ep))
     return p
 
 
 def write_node(nodes_dir: Path, nd: Node) -> Path:
     nodes_dir.mkdir(parents=True, exist_ok=True)
     p = node_path(nodes_dir, nd.label)
-    p.write_text(serialize_node(nd), encoding="utf-8")
+    _atomic_write_text(p, serialize_node(nd))
     return p
 
 

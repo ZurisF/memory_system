@@ -19,6 +19,8 @@ from pathlib import Path
 
 from memory_system.agent import ChatError, ChatProvider, extract_json
 from memory_system.preprocess import CleanedTranscript, render_for_chunk
+# 回合区间 → 覆盖 uuid 的唯一实现在 segments_store(过去这里有份字面重复)
+from memory_system.segments_store import recompute_uuids as _covered_uuids
 
 MAX_CHARS = 120_000  # 渲染文本超此即报错让人工先粗分(opus 200k token 窗够,但再大切块质量掉)
 SHORT_TURNS = 15     # 少于此回合数算 short(与 prompt 一致)
@@ -85,13 +87,6 @@ def _parse_turn_ref(v) -> int:
     if not m:
         raise ValueError(f"无法解析回合号: {v!r}")
     return int(m.group(1))
-
-
-def _covered_uuids(start: int, end: int, umap: dict[int, list[str]]) -> list[str]:
-    out: list[str] = []
-    for i in range(start, end + 1):
-        out.extend(umap.get(i, []))
-    return out
 
 
 def _normalize_segment(raw: dict, n_turns: int, umap: dict[int, list[str]], *, origin: str) -> dict:

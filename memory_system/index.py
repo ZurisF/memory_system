@@ -92,11 +92,13 @@ def assert_embeddable(con: sqlite3.Connection, provider: EmbeddingProvider, *, l
 
 
 def _clear(con: sqlite3.Connection) -> None:
-    """清空内容表。删 nodes/episodes 经 FK 级联清膜;FTS 由触发器随 episodes 清。"""
+    """清空内容表。删 nodes/episodes 经 FK 级联清膜;FTS 由触发器随 episodes 清。
+
+    不在此 commit:清空与重灌必须同属一个事务——否则灌入若失败(如碎片间别名撞
+    UNIQUE),清空已提交、库被留成空的,违背 rebuild 的「任一步抛错 DB 原封不动」。"""
     con.execute("DELETE FROM episode_vectors")
     con.execute("DELETE FROM episodes")   # 触发器清 FTS;级联清膜
     con.execute("DELETE FROM nodes")      # 级联清 aliases、残膜
-    con.commit()
 
 
 def _insert_nodes(
@@ -239,11 +241,15 @@ def rebuild(cfg: Config, provider: EmbeddingProvider, *, lock_meta: bool = True)
         eps = load_all_episodes(cfg.episodes_dir)    # 坏 episode 碎片在此 fail-fast
         model, dim = assert_embeddable(con, provider, lock_meta=lock_meta)  # 锁校验/落锁(不清内容)
         vectors = _embed_overviews(cfg, provider, eps, dim)  # 联网失败也在清库前抛
-        # ---- 阶段二:全部成功,才动 DB 内容 ----
-        _clear(con)
-        label_to_id = _insert_nodes(con, nodes, report)
-        _insert_episodes(con, eps, vectors, label_to_id, model, dim, report)
-        con.commit()
+        # ---- 阶段二:全部成功,才动 DB 内容(清空+重灌同一事务,失败整体回滚)----
+        try:
+            _clear(con)
+            label_to_id = _insert_nodes(con, nodes, report)
+            _insert_episodes(con, eps, vectors, label_to_id, model, dim, report)
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
         return report
     finally:
         con.close()

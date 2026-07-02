@@ -22,7 +22,8 @@ class TranscriptInfo:
     cwd: str | None          # 首条记录里的 cwd(比 encoded 目录名可靠)
     mtime: float
     size: int
-    line_count: int          # 廉价代理:行数 ≈ 记录数(非对话回合数)
+    line_count: int | None   # 廉价代理:行数 ≈ 记录数。默认 None(不数——数行要全量读文件,
+                             # 违背"列表只 stat+嗅探";只有 CLI scan 等显式要时才算)
     maybe_writing: bool      # mtime 在 WRITING_WINDOW 内
 
 
@@ -56,7 +57,8 @@ def _count_lines(path: Path) -> int:
         return 0
 
 
-def describe(path: Path, *, now: float | None = None) -> TranscriptInfo:
+def describe(path: Path, *, now: float | None = None,
+             count_lines: bool = False) -> TranscriptInfo:
     now = time.time() if now is None else now
     st = path.stat()
     return TranscriptInfo(
@@ -65,21 +67,27 @@ def describe(path: Path, *, now: float | None = None) -> TranscriptInfo:
         cwd=_sniff_cwd(path),
         mtime=st.st_mtime,
         size=st.st_size,
-        line_count=_count_lines(path),
+        line_count=_count_lines(path) if count_lines else None,
         maybe_writing=(now - st.st_mtime) <= WRITING_WINDOW_SEC,
     )
 
 
 def discover(root: Path, *, now: float | None = None,
-             pattern: str = "*/*.jsonl") -> list[TranscriptInfo]:
+             pattern: str = "*/*.jsonl",
+             count_lines: bool = False) -> list[TranscriptInfo]:
     """列出 root 下匹配 pattern 的 jsonl,按 mtime 倒序(最近的在前)。
 
     默认 `*/*.jsonl` 对应 Claude 的 `<encoded-cwd>/*.jsonl` 布局;导入目录是扁平的,
-    传 `*.jsonl`。
+    传 `*.jsonl`。glob 到 describe 之间文件被清理(30 天清理/空壳删除)的直接跳过,
+    不让一个消失的文件把整个列表打 500。
     """
     if not root.exists():
         return []
-    paths = sorted(root.glob(pattern))
-    infos = [describe(p, now=now) for p in paths]
+    infos: list[TranscriptInfo] = []
+    for p in sorted(root.glob(pattern)):
+        try:
+            infos.append(describe(p, now=now, count_lines=count_lines))
+        except OSError:
+            continue  # glob 后被删:跳过
     infos.sort(key=lambda i: i.mtime, reverse=True)
     return infos

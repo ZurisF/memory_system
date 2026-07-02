@@ -19,6 +19,13 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from memory_system.locks import lock_for
+
+
+def _lock(session_id: str):
+    """同一会话的读改写互斥(server 多线程下防丢更新);见 locks.py。"""
+    return lock_for(f"chunks:{session_id}")
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -88,13 +95,14 @@ def save_full(
     agent_meta: dict | None = None,
 ) -> dict:
     """整份保存段(前端编辑后回存)。保留既有 retry/created_at,刷新 source_mtime。"""
-    doc = load(chunks_dir, session_id) or _blank_doc(session_id, source_path, source_mtime)
-    doc["source_path"] = source_path
-    doc["source_mtime"] = source_mtime
-    doc["segments"] = _assign_ids(doc, segments)
-    if agent_meta is not None:
-        doc["agent"] = agent_meta
-    return _write(chunks_dir, doc)
+    with _lock(session_id):
+        doc = load(chunks_dir, session_id) or _blank_doc(session_id, source_path, source_mtime)
+        doc["source_path"] = source_path
+        doc["source_mtime"] = source_mtime
+        doc["segments"] = _assign_ids(doc, segments)
+        if agent_meta is not None:
+            doc["agent"] = agent_meta
+        return _write(chunks_dir, doc)
 
 
 def record_agent_run(
@@ -130,11 +138,12 @@ def append_retry(
     error: str,
 ) -> dict:
     """记一次切块失败(供 UI 告警 + 人工重试)。不动已有 segments。"""
-    doc = load(chunks_dir, session_id) or _blank_doc(session_id, source_path, source_mtime)
-    doc.setdefault("retry", []).append(
-        {"at": _now(), "provider": provider, "model": model, "error": error}
-    )
-    return _write(chunks_dir, doc)
+    with _lock(session_id):
+        doc = load(chunks_dir, session_id) or _blank_doc(session_id, source_path, source_mtime)
+        doc.setdefault("retry", []).append(
+            {"at": _now(), "provider": provider, "model": model, "error": error}
+        )
+        return _write(chunks_dir, doc)
 
 
 # ---- 纯函数式段编辑(CLI/测试用;前端可自行编辑后 save_full)----
@@ -196,21 +205,22 @@ def delete(chunks_dir: Path, session_id: str, seg_ids: list[str]) -> tuple[dict 
     返回 (更新后的 doc 或 None, 实删段数)。**不碰 staging episode**:段与已提取条目解耦,
     删段不影响已蒸馏的 episode(episode 自带 source_text)。
     """
-    doc = load(chunks_dir, session_id)
-    if not doc:
-        return None, 0
-    target = set(seg_ids or [])
-    kept = [s for s in doc.get("segments", []) if s.get("seg_id") not in target]
-    deleted = len(doc.get("segments", [])) - len(kept)
-    if not kept:
-        # 无段 = 等价未切块,删工作文件,保持蒸馏列表整洁
-        try:
-            path_for(chunks_dir, session_id).unlink()
-        except OSError:
-            pass
-        return None, deleted
-    doc["segments"] = kept
-    return _write(chunks_dir, doc), deleted
+    with _lock(session_id):
+        doc = load(chunks_dir, session_id)
+        if not doc:
+            return None, 0
+        target = set(seg_ids or [])
+        kept = [s for s in doc.get("segments", []) if s.get("seg_id") not in target]
+        deleted = len(doc.get("segments", [])) - len(kept)
+        if not kept:
+            # 无段 = 等价未切块,删工作文件,保持蒸馏列表整洁
+            try:
+                path_for(chunks_dir, session_id).unlink()
+            except OSError:
+                pass
+            return None, deleted
+        doc["segments"] = kept
+        return _write(chunks_dir, doc), deleted
 
 
 def set_boundary(

@@ -22,6 +22,14 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from memory_system.locks import lock_for
+
+
+def _lock(session_id: str):
+    """同一会话的读改写互斥。批量提取(逐段落盘)运行期间,用户对同会话
+    confirm/edit/删条的写入才不会互相覆盖(server 多线程)。"""
+    return lock_for(f"staging:{session_id}")
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -121,15 +129,16 @@ def upsert_episode(
 
     created_at = 段首回合发生时间,随段存入 staging(归档时作 episode 的 created_at)。
     """
-    doc = load(staging_dir, session_id) or _blank_doc(session_id, source_path)
-    doc["source_path"] = source_path
-    ep = _episode_doc(doc, seg, result, source_text, created_at)
-    eps = [e for e in doc.get("episodes", []) if e.get("seg_id") != ep["seg_id"]]
-    eps.append(ep)
-    doc["episodes"] = sorted(eps, key=lambda e: (e.get("start_turn") or 0))
-    # 这段提取成功 → 移除它之前的失败记录(retry 列表只留当前仍坏的段)
-    doc["retry"] = [r for r in doc.get("retry", []) if r.get("seg_id") != ep["seg_id"]]
-    return _write(staging_dir, doc)
+    with _lock(session_id):
+        doc = load(staging_dir, session_id) or _blank_doc(session_id, source_path)
+        doc["source_path"] = source_path
+        ep = _episode_doc(doc, seg, result, source_text, created_at)
+        eps = [e for e in doc.get("episodes", []) if e.get("seg_id") != ep["seg_id"]]
+        eps.append(ep)
+        doc["episodes"] = sorted(eps, key=lambda e: (e.get("start_turn") or 0))
+        # 这段提取成功 → 移除它之前的失败记录(retry 列表只留当前仍坏的段)
+        doc["retry"] = [r for r in doc.get("retry", []) if r.get("seg_id") != ep["seg_id"]]
+        return _write(staging_dir, doc)
 
 
 def get_episode(staging_dir: Path, session_id: str, stage_id: str) -> dict | None:
@@ -150,44 +159,65 @@ def edit_episode(staging_dir: Path, session_id: str, stage_id: str, fields: dict
 
     确认前的修改全停在 staging,不碰正本;只允许改 _EDITABLE 字段,covered_uuids 等工作态不动。
     """
-    doc = load(staging_dir, session_id)
-    if not doc:
-        raise KeyError(f"无 staging 文档: {session_id}")
-    ep = next((e for e in doc.get("episodes", []) if e.get("stage_id") == stage_id), None)
-    if ep is None:
-        raise KeyError(f"staging 无此 episode: {stage_id}")
-    for k, v in fields.items():
-        if k in _EDITABLE:
-            ep[k] = v
-    ep["origin"] = "edited"
-    return _write(staging_dir, doc)
+    with _lock(session_id):
+        doc = load(staging_dir, session_id)
+        if not doc:
+            raise KeyError(f"无 staging 文档: {session_id}")
+        ep = next((e for e in doc.get("episodes", []) if e.get("stage_id") == stage_id), None)
+        if ep is None:
+            raise KeyError(f"staging 无此 episode: {stage_id}")
+        for k, v in fields.items():
+            if k in _EDITABLE:
+                ep[k] = v
+        ep["origin"] = "edited"
+        return _write(staging_dir, doc)
 
 
 def remove_episode(staging_dir: Path, session_id: str, stage_id: str) -> dict:
     """从 staging 移除一条 episode(确认归档后工作态消费完)。"""
-    doc = load(staging_dir, session_id)
-    if not doc:
-        raise KeyError(f"无 staging 文档: {session_id}")
-    doc["episodes"] = [e for e in doc.get("episodes", []) if e.get("stage_id") != stage_id]
-    return _write(staging_dir, doc)
+    with _lock(session_id):
+        doc = load(staging_dir, session_id)
+        if not doc:
+            raise KeyError(f"无 staging 文档: {session_id}")
+        doc["episodes"] = [e for e in doc.get("episodes", []) if e.get("stage_id") != stage_id]
+        return _write(staging_dir, doc)
 
 
 def reject_episode(staging_dir: Path, session_id: str, stage_id: str,
                    reason: str | None = None) -> dict:
     """拒一条 staging episode:从 episodes 移除,留痕到 rejected 列表(不写碎片不进 DB)。"""
-    doc = load(staging_dir, session_id)
-    if not doc:
-        raise KeyError(f"无 staging 文档: {session_id}")
-    ep = next((e for e in doc.get("episodes", []) if e.get("stage_id") == stage_id), None)
-    if ep is None:
-        raise KeyError(f"staging 无此 episode: {stage_id}")
-    doc["episodes"] = [e for e in doc["episodes"] if e.get("stage_id") != stage_id]
-    doc.setdefault("rejected", []).append({
-        "stage_id": stage_id, "seg_id": ep.get("seg_id"),
-        "start_turn": ep.get("start_turn"), "end_turn": ep.get("end_turn"),
-        "rejected_at": _now(), "reason": reason,
-    })
-    return _write(staging_dir, doc)
+    with _lock(session_id):
+        doc = load(staging_dir, session_id)
+        if not doc:
+            raise KeyError(f"无 staging 文档: {session_id}")
+        ep = next((e for e in doc.get("episodes", []) if e.get("stage_id") == stage_id), None)
+        if ep is None:
+            raise KeyError(f"staging 无此 episode: {stage_id}")
+        doc["episodes"] = [e for e in doc["episodes"] if e.get("stage_id") != stage_id]
+        doc.setdefault("rejected", []).append({
+            "stage_id": stage_id, "seg_id": ep.get("seg_id"),
+            "start_turn": ep.get("start_turn"), "end_turn": ep.get("end_turn"),
+            "rejected_at": _now(), "reason": reason,
+        })
+        return _write(staging_dir, doc)
+
+
+def clear_retry(staging_dir: Path, session_id: str, seg_ids: list[str]) -> dict | None:
+    """手动忽略失败记录:按 seg_id 从 retry 列表移除(不动 episodes、不留痕)。
+
+    给 UI「关闭失败卡」用——人工判定这段不必再提取/重试,把告警清掉。
+    文档不存在或无 retry 变化 → 直接返回当前(或 None)。
+    """
+    with _lock(session_id):
+        doc = load(staging_dir, session_id)
+        if not doc:
+            return None
+        targets = set(seg_ids or [])
+        kept = [r for r in doc.get("retry", []) if r.get("seg_id") not in targets]
+        if len(kept) == len(doc.get("retry", [])):
+            return doc  # 无变化,不必落盘
+        doc["retry"] = kept
+        return _write(staging_dir, doc)
 
 
 def append_retry(
@@ -201,6 +231,21 @@ def append_retry(
     errors: list[str],
 ) -> dict:
     """记一段提取失败(供 UI 告警 + 人工重试)。同段只留最新一条;不动已 staged 的段。"""
+    with _lock(session_id):
+        return _append_retry_locked(staging_dir, session_id, source_path, seg,
+                                    provider=provider, model=model, errors=errors)
+
+
+def _append_retry_locked(
+    staging_dir: Path,
+    session_id: str,
+    source_path: str,
+    seg: dict,
+    *,
+    provider: str,
+    model: str,
+    errors: list[str],
+) -> dict:
     doc = load(staging_dir, session_id) or _blank_doc(session_id, source_path)
     doc["source_path"] = source_path
     seg_id = seg.get("seg_id") or ""
