@@ -1,0 +1,13 @@
+# eval/queries.jsonl —— 检索评测夹具(S6-8)。由 zuris 随真实记忆积累手工添加。
+# 每行一个 JSON 对象(以 # 开头的注释行与空行会被 eval_recall.py 跳过):
+#   {"query": "...", "mode": "episode|detail|concept", "expect": ["ep_xxxx"], "note": "为什么该命中"}
+# 字段:
+#   query   检索词;concept 模式下是 node 的 label 或别名。
+#   mode    episode(向量+FTS 双路,排名取 primary 主槽)/ detail(FTS grep,取 hits)/
+#           concept(膜 join,取 episodes);可选 "context" 字段仅 concept 用(语境向量排序)。
+#   expect  期望命中的 episode public_id 列表(concept 亦是 episode id)。
+#   note    人读理由,脚本忽略。
+# 真实库当前仅 1 条 episode,以下示例先注释占位;有真实记忆后取消注释、把 id 换成真 public_id:
+# {"query": "曲率引擎的能量需求", "mode": "episode", "expect": ["ep_xxxxxxxx"], "note": "原文直接讨论该主题,双路应命中"}
+# {"query": "蓝莓松饼", "mode": "detail", "expect": ["ep_xxxxxxxx"], "note": "逐字原文含该词,FTS grep 直查"}
+# {"query": "荒诞主义", "mode": "concept", "expect": ["ep_xxxxxxxx"], "note": "该 node 下挂载的情景"}

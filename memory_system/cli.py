@@ -501,6 +501,179 @@ def cmd_delete(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_recall(cfg: Config, args: argparse.Namespace) -> int:
+    """检索(S6):二级动作 detail / episode / concept。"""
+    if args.action == "detail":
+        return _recall_detail(cfg, args)
+    if args.action == "episode":
+        return _recall_episode(cfg, args)
+    if args.action == "concept":
+        return _recall_concept(cfg, args)
+    print(f"未知 recall 动作: {args.action}")
+    return 1
+
+
+def _recall_detail(cfg: Config, args: argparse.Namespace) -> int:
+    import json
+
+    from memory_system.recall import recall_detail
+
+    result = recall_detail(cfg, args.query, since=args.since, until=args.until,
+                           raw=args.raw, limit=args.limit)
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    hits = result["hits"]
+    if not hits:
+        print(f"未命中「{args.query}」。")
+        print("提示:FTS trigram 对少于 3 个字符的中文词不可靠,换更长/更具体的词再试。")
+        return 0
+    print(f"细节检索「{args.query}」命中 {len(hits)} 条:")
+    for h in hits:
+        print(f"  {h['public_id']}  [{h.get('created_at') or ''}]  tier={h.get('salience_tier')}")
+        print(f"       {h['window']}")
+    return 0
+
+
+def _print_episode_structured(result: dict) -> None:
+    """episode 结构化槽位的人类可读渲染(--raw 与重构降级共用)。"""
+    slots = result["slots"]
+    print(f"情景检索「{result['query']}」  frame_nodes: {', '.join(result['frame_nodes']) or '(无)'}")
+    print("主槽:")
+    for h in slots["primary"]:
+        print(f"  {h['public_id']}  [{h.get('created_at') or ''}]  "
+              f"tier={h.get('salience_tier')}  score={h['score']}")
+        ov = (h.get("overview") or "").replace("\n", " ")
+        print(f"       ↳ {ov[:70]}")
+    if slots["same_source"]:
+        print("同源:")
+        for h in slots["same_source"]:
+            sm = (h.get("summary") or "").replace("\n", " ")
+            print(f"  {h['public_id']}  [{h.get('created_at') or ''}]  {sm[:60]}")
+    if slots["associative"]:
+        print("联想:")
+        for h in slots["associative"]:
+            sm = (h.get("summary") or "").replace("\n", " ")
+            print(f"  {h['public_id']}  (via {', '.join(h.get('via_nodes') or [])})  {sm[:60]}")
+
+
+def _print_concept_structured(result: dict) -> None:
+    """concept 结构化条目的人类可读渲染(--raw 与重构降级共用)。"""
+    print(f"概念检索「{result['node']}」  挂载 {len(result['episodes'])} 条情景")
+    if result["alias_bridge"]:
+        print(f"  {result['alias_bridge']}")
+    for e in result["episodes"]:
+        print(f"  {e['public_id']}  [{e.get('created_at') or ''}]  "
+              f"tier={e['salience_tier']}  activation={e['activation']}")
+        sm = (e.get("summary") or "").replace("\n", " ")
+        print(f"       ↳ {sm[:70]}")
+        for hl in e.get("highlights") or []:
+            print(f"       「{hl.get('text', '')}」")
+
+
+def _recall_episode(cfg: Config, args: argparse.Namespace) -> int:
+    import json
+
+    from memory_system.agent.base import ChatError
+    from memory_system.recall import recall_episode, reconstruct
+
+    try:
+        result = recall_episode(cfg, args.query)
+    except ValueError as e:  # meta 锁不符:查询向量与库内向量不同模型/维度
+        print(f"检索拒绝: {e}")
+        return 2
+    if args.json:  # 机器可读 = §5 结构化契约,不走重构
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if not result["slots"]["primary"]:
+        print(f"未命中「{args.query}」。")
+        print("提示:库为空或候选全被过滤;FTS trigram 对少于 3 个字符的中文词不可靠,可换个说法再试。")
+        return 0
+    if args.raw:  # 调试逃生口:结构化槽位,不调 chat provider
+        _print_episode_structured(result)
+        return 0
+    # 默认:重构成自然语言(S6-5)。候选集已定死并写日志,LLM 只做表达。
+    setup_logging(cfg.logs_dir)
+    try:
+        text = reconstruct.run(cfg, "episode", result, args.query)
+    except ChatError as e:
+        print(f"重构失败(已降级为 --raw 结构化输出): {e}")
+        _print_episode_structured(result)
+        return 3  # 非零但不吞结果
+    print(text)
+    return 0
+
+
+def _recall_concept(cfg: Config, args: argparse.Namespace) -> int:
+    import json
+
+    from memory_system.agent.base import ChatError
+    from memory_system.recall import recall_concept, reconstruct
+    from memory_system.recall.concept import NodeMissError
+
+    try:
+        result = recall_concept(cfg, args.node, context=args.context)
+    except NodeMissError as e:
+        print(f"没有叫「{e.query}」的概念(label / 别名都查过)。")
+        if e.suggestions:
+            print("  也许你想找:")
+            for lab in e.suggestions:
+                print(f"    {lab}")
+        return 1
+    except ValueError as e:  # meta 锁不符(--context 走了查询向量)
+        print(f"检索拒绝: {e}")
+        return 2
+    if args.json:  # 机器可读 = §5 结构化契约,不走重构
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if not result["episodes"]:
+        print(f"概念「{result['node']}」下没有挂载中的 active 情景,无可重构。")
+        return 0
+    if args.raw:  # 调试逃生口:结构化条目,不调 chat provider
+        _print_concept_structured(result)
+        return 0
+    # 默认:重构成综合立场(S6-5)。概念必重构(§0.1)。
+    setup_logging(cfg.logs_dir)
+    user_query = args.node if not args.context else f"{args.node}(语境: {args.context})"
+    try:
+        text = reconstruct.run(cfg, "concept", result, user_query)
+    except ChatError as e:
+        print(f"重构失败(已降级为 --raw 结构化输出): {e}")
+        _print_concept_structured(result)
+        return 3  # 非零但不吞结果
+    print(text)
+    return 0
+
+
+def cmd_opening(cfg: Config, args: argparse.Namespace) -> int:
+    """开场注入(S6-6):rebuild(重建缓存)/ show(展示缓存)。"""
+    from memory_system.agent.base import ChatError
+    from memory_system.recall import opening
+
+    if args.action == "rebuild":
+        setup_logging(cfg.logs_dir)  # reconstruct 要写候选集日志(召回可重放)
+        try:
+            text = opening.rebuild_opening(cfg, force=args.force)
+        except ChatError as e:  # 重构失败:cache 不动、dirty 保留,下次重试
+            print(f"开场重构失败(cache 未动,.dirty 保留待重试): {e}")
+            return 3
+        if text is None:  # 无 .dirty 且未 --force → 跳过
+            print("开场缓存无需重建(无 .dirty 标记;--force 可强制重建)。")
+            return 0
+        print(f"开场缓存已重建: {opening.cache_path(cfg)}")
+        return 0
+    if args.action == "show":
+        cache = opening.cache_path(cfg)
+        if not cache.exists():
+            print("开场缓存不存在;先跑 `memory-system opening rebuild --force` 生成。")
+            return 1
+        text = cache.read_text(encoding="utf-8")
+        print(text, end="" if text.endswith("\n") else "\n")
+        return 0
+    print(f"未知 opening 动作: {args.action}")
+    return 1
+
+
 def cmd_index(cfg: Config, args: argparse.Namespace) -> int:
     from dataclasses import replace
 
@@ -618,6 +791,36 @@ def build_parser() -> argparse.ArgumentParser:
     dln = dlsub.add_parser("node", help="删一个 node(碎片 + DB;并从所有引用它的 episode 碎片摘除该引用)")
     dln.add_argument("label", help="node 的 label")
     dl.set_defaults(func=cmd_delete)
+
+    rc = sub.add_parser("recall", help="检索记忆(细节/情景/概念)")
+    rcsub = rc.add_subparsers(dest="action", required=True)
+    rd = rcsub.add_parser("detail", help="细节检索:FTS 全文 grep + 开窗(逐字保真,不重构)")
+    rd.add_argument("query", help="检索词(中文用 ≥3 字更可靠)")
+    rd.add_argument("--since", default=None, help="只取该日期(含)之后创建的,ISO 串如 2026-06-01")
+    rd.add_argument("--until", default=None, help="只取该日期(含)之前创建的")
+    rd.add_argument("--raw", action="store_true", help="返回整条 source_text,不开窗")
+    rd.add_argument("--json", action="store_true", help="机器可读输出(默认人类可读)")
+    rd.add_argument("--limit", type=int, default=None, help="返回条数(默认 recall.detail_limit)")
+    re_ = rcsub.add_parser("episode", help="情景检索:向量+FTS 双路 → RRF 融合 → 填槽")
+    re_.add_argument("query", help="检索词/一句话描述想回忆的情景")
+    re_.add_argument("--raw", action="store_true",
+                     help="输出结构化槽位,不走重构(调试逃生口;默认重构成自然语言回忆)")
+    re_.add_argument("--json", action="store_true", help="机器可读输出(默认人类可读)")
+    rn = rcsub.add_parser("concept", help="概念检索:node/别名精确命中 → 膜 join 全量取(概念层,无原文)")
+    rn.add_argument("node", help="node label 或别名(精确匹配;miss 时列相近 label)")
+    rn.add_argument("--context", default=None,
+                    help="一句话语境;给了按语境相似度排,不给按 tier/活跃度降序")
+    rn.add_argument("--raw", action="store_true",
+                    help="输出结构化条目,不走重构(调试逃生口;默认重构成综合立场)")
+    rn.add_argument("--json", action="store_true", help="机器可读输出(默认人类可读)")
+    rc.set_defaults(func=cmd_recall)
+
+    op = sub.add_parser("opening", help="开场注入:重建/展示开场缓存(SessionStart hook 只读该缓存)")
+    opsub = op.add_subparsers(dest="action", required=True)
+    orb = opsub.add_parser("rebuild", help="重建开场缓存(默认仅当 .dirty 存在;--force 无视并强跑)")
+    orb.add_argument("--force", action="store_true", help="无视 .dirty 强制重建")
+    opsub.add_parser("show", help="展示开场缓存(不存在时提示先 rebuild)")
+    op.set_defaults(func=cmd_opening)
 
     ixp = sub.add_parser("index", help="索引重建")
     ixsub = ixp.add_subparsers(dest="action", required=True)

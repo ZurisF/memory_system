@@ -65,6 +65,7 @@ class AgentConfig:
     extract_provider: str = ""         # 提取专用 provider;空则回退到 provider
     chunk_model: str = "sonnet"        # S3 切块默认(opus 太烧)
     extract_model: str = "opus"        # S4 提取默认
+    recall_model: str = "sonnet"       # S6 重构默认(候选集已定死,只做表达;检索路径求快省)
     # OpenAI 兼容后端(deepseek/qwen 等);claude_cli/fake 不读。
     base_url: str = "https://api.deepseek.com/v1"
     api_key_env: str = "DEEPSEEK_API_KEY"
@@ -90,6 +91,7 @@ def _agent_from_env() -> AgentConfig:
         extract_provider=os.environ.get("MEMORY_AGENT_EXTRACT_PROVIDER", ""),
         chunk_model=os.environ.get("MEMORY_AGENT_CHUNK_MODEL", d.chunk_model),
         extract_model=os.environ.get("MEMORY_AGENT_EXTRACT_MODEL", d.extract_model),
+        recall_model=os.environ.get("MEMORY_AGENT_RECALL_MODEL", d.recall_model),
         base_url=os.environ.get("MEMORY_AGENT_BASE_URL", d.base_url),
         api_key_env=os.environ.get("MEMORY_AGENT_KEY_ENV", d.api_key_env),
         timeout_s=int(os.environ.get("MEMORY_AGENT_TIMEOUT", str(d.timeout_s))),
@@ -98,10 +100,63 @@ def _agent_from_env() -> AgentConfig:
 
 
 @dataclass(frozen=True)
+class RecallConfig:
+    """S6 检索层参数(惰性衰减 + 三路检索 + 开场注入)。全部现算,改这里即全库生效、零迁移。
+
+    半衰期起步值 14/90/365 天(tier 1/2/3);其余槽位/预算旋钮见 s6_build_plan §3。
+    字段用字面量默认;环境变量(MEMORY_RECALL_*)的读取在 _recall_from_env(load 时),不在 import 时。
+    """
+
+    half_life_days: tuple[float, float, float] = (14.0, 90.0, 365.0)  # tier 1/2/3
+    topk_final: int = 3            # 情景检索主槽最终条数
+    candidate_multiplier: int = 4  # 两路各取 topk_final*4 进 RRF
+    rrf_k: int = 60
+    w_activation: float = 0.3      # 衰减乘子权重: score * (1 + w * activation)
+    same_source_span: int = 1      # 同源扩展前后各取几条
+    assoc_limit: int = 2           # 联想槽上限
+    detail_limit: int = 5          # 细节检索返回条数
+    window_tokens: int = 48        # FTS snippet 窗宽(FTS5 上限 64)
+    opening_max_items: int = 3     # 开场硬顶
+    opening_token_budget: int = 250
+
+
+def _parse_half_lives(raw: str, default: tuple[float, float, float]) -> tuple[float, float, float]:
+    # "14,90,365" → (14.0, 90.0, 365.0);格式不对回落默认,不让坏配置炸检索。
+    try:
+        parts = [float(x.strip()) for x in raw.split(",") if x.strip()]
+    except ValueError:
+        return default
+    return (parts[0], parts[1], parts[2]) if len(parts) >= 3 else default
+
+
+def _recall_from_env() -> RecallConfig:
+    d = RecallConfig()
+    return RecallConfig(
+        half_life_days=_parse_half_lives(
+            os.environ.get("MEMORY_RECALL_HALF_LIVES", ""), d.half_life_days),
+        topk_final=int(os.environ.get("MEMORY_RECALL_TOPK_FINAL", str(d.topk_final))),
+        candidate_multiplier=int(os.environ.get(
+            "MEMORY_RECALL_CANDIDATE_MULTIPLIER", str(d.candidate_multiplier))),
+        rrf_k=int(os.environ.get("MEMORY_RECALL_RRF_K", str(d.rrf_k))),
+        w_activation=float(os.environ.get("MEMORY_RECALL_W_ACTIVATION", str(d.w_activation))),
+        same_source_span=int(os.environ.get(
+            "MEMORY_RECALL_SAME_SOURCE_SPAN", str(d.same_source_span))),
+        assoc_limit=int(os.environ.get("MEMORY_RECALL_ASSOC_LIMIT", str(d.assoc_limit))),
+        detail_limit=int(os.environ.get("MEMORY_RECALL_DETAIL_LIMIT", str(d.detail_limit))),
+        window_tokens=int(os.environ.get("MEMORY_RECALL_WINDOW_TOKENS", str(d.window_tokens))),
+        opening_max_items=int(os.environ.get(
+            "MEMORY_RECALL_OPENING_MAX_ITEMS", str(d.opening_max_items))),
+        opening_token_budget=int(os.environ.get(
+            "MEMORY_RECALL_OPENING_TOKEN_BUDGET", str(d.opening_token_budget))),
+    )
+
+
+@dataclass(frozen=True)
 class Config:
     home: Path = field(default_factory=_home)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
+    recall: RecallConfig = field(default_factory=RecallConfig)
     transcripts_root: Path = field(default_factory=_transcripts_root)
 
     # ---- 主目录布局 ----
@@ -188,4 +243,5 @@ def load_config() -> Config:
     load_dotenv(home / ".env")
     agent_cfg = _agent_from_env()
     agent_cfg = replace(agent_cfg, custom_providers=registry.custom_map(home))
-    return Config(home=home, embedding=_embedding_from_env(), agent=agent_cfg)
+    return Config(home=home, embedding=_embedding_from_env(), agent=agent_cfg,
+                  recall=_recall_from_env())

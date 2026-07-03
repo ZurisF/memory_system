@@ -70,6 +70,6 @@ memory-system archive ep_a1b2c3d4          # 审核(S5):active 碎片降级为 a
 ## 阶段
 
 当前:**Phase 1 / S0–S5 全绿**——引擎 + 写入侧富 GUI + 查看侧只读 galaxy + 控制台 + 三视图导航全部就绪
-(`verify_s1`~`verify_s5` + `verify_web_api` + `verify_view_api` + `verify_provider_config` 全过)。
+(`verify_s1`~`verify_s5` + `verify_s6` + `verify_web_api` + `verify_view_api` + `verify_provider_config` 全过)。
 下一步:**S6 检索层**(向量召回 + FTS + 图扩展);编辑写回降到 Phase 2。详见 `HANDOFF_NOTES.md`。
 逐步通过门见 `phase1_build.md`。

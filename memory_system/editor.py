@@ -166,4 +166,6 @@ def edit_episode(
     ep.highlights = new_highlights
     ep.salience_tier = new_tier
     write_episode(cfg.episodes_dir, ep)
+    from memory_system.recall import opening  # 编辑写回改变 active 集内容 → 开场缓存过期(S6-6)
+    opening.mark_dirty(cfg)
     return EditReport(public_id=public_id, changed=changed, reembedded=reembed)

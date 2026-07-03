@@ -204,6 +204,8 @@ def confirm_episode(
         write_node(cfg.nodes_dir, node)
     write_episode(cfg.episodes_dir, ep)
     staging_store.remove_episode(sdir, session_id, stage_id)
+    from memory_system.recall import opening  # active 集变动 → 开场缓存过期(S6-6)
+    opening.mark_dirty(cfg)
     return public_id
 
 
@@ -252,6 +254,8 @@ def archive_episode(cfg: Config, public_id: str) -> None:
         con.commit()
     finally:
         con.close()
+    from memory_system.recall import opening  # active→archived 改变 active 集(S6-6)
+    opening.mark_dirty(cfg)
 
 
 # ---- delete:碎片 + DB 永久移除(误入库的真删,区别于 archive 软降级)----
@@ -300,6 +304,8 @@ def delete_episode(cfg: Config, public_id: str) -> DeleteReport:
                 orphaned.append(label)
     finally:
         con.close()
+    from memory_system.recall import opening  # 删 active 改变 active 集(S6-6)
+    opening.mark_dirty(cfg)
     return DeleteReport(public_id=public_id, orphaned_nodes=orphaned)
 
 

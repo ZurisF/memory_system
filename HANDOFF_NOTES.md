@@ -85,6 +85,7 @@ S6 做的是「查询 → 召回 → 排序 → 注入回 Claude Code」。**底
 后端回归(优先用项目 `.venv`,否则可能因包路径或 `sqlite_vec` 未装失败):
 ```bash
 .venv/bin/python scripts/verify_s1.py   # … s2 s3 s4 s5
+.venv/bin/python scripts/verify_s6.py   # S6 检索层(衰减/三路检索/重构/开场,fake 离线)
 .venv/bin/python scripts/verify_web_api.py
 .venv/bin/python scripts/verify_view_api.py
 .venv/bin/python scripts/verify_provider_config.py
