@@ -150,6 +150,8 @@ def make_handler(cfg: Config):
                 return self._api_memory(parse_qs(u.query))
             if u.path == "/api/node":
                 return self._api_node(parse_qs(u.query))
+            if u.path == "/api/prompts":
+                return self._api_prompts()
             self._send(404, b"not found", "text/plain")
 
         # ---- 查看侧只读 ----
@@ -207,6 +209,13 @@ def make_handler(cfg: Config):
                     "model": default_model,
                     "providers": providers,
                 }
+            # 重构(recall)只有 model 旋钮,没有专用 provider 通道:沿用默认 agent provider。
+            # 如实呈现——给出当前生效 provider 供 UI 展示,但不发明 recall_provider(无下拉)。
+            agents["recall"] = {
+                "model": cfg.agent.recall_model,
+                "provider": cfg.agent.provider,
+                "no_provider_channel": True,
+            }
 
             # embedding key 状态
             emb = cfg.embedding
@@ -236,13 +245,13 @@ def make_handler(cfg: Config):
             provider 切换影响所有 agent 角色(共享);model 可按 role 各自设。
             变更需重启服务才能在后续 API 调用中全局生效(Config 启动时已冻结)。"""
             role = str(body.get("role", "")).strip()
-            if role not in ("chunk", "extract"):
-                return self._json({"error": "role 必须是 chunk 或 extract"}, 400)
+            if role not in ("chunk", "extract", "recall"):
+                return self._json({"error": "role 必须是 chunk、extract 或 recall"}, 400)
 
             updates: dict[str, str] = {}
-            # provider 切换(按 role 独立,不再共享)
+            # provider 切换(按 role 独立,不再共享)。recall 无专用 provider 通道,不接受 provider。
             provider = str(body.get("provider", "")).strip()
-            if provider and provider in registry.all_provider_ids(cfg):
+            if role != "recall" and provider and provider in registry.all_provider_ids(cfg):
                 prov_key = {"chunk": "MEMORY_AGENT_CHUNK_PROVIDER",
                             "extract": "MEMORY_AGENT_EXTRACT_PROVIDER"}[role]
                 updates[prov_key] = provider
@@ -251,7 +260,8 @@ def make_handler(cfg: Config):
             model = str(body.get("model", "")).strip()
             if model:
                 model_key = {"chunk": "MEMORY_AGENT_CHUNK_MODEL",
-                             "extract": "MEMORY_AGENT_EXTRACT_MODEL"}[role]
+                             "extract": "MEMORY_AGENT_EXTRACT_MODEL",
+                             "recall": "MEMORY_AGENT_RECALL_MODEL"}[role]
                 updates[model_key] = model
 
             if not updates:
@@ -274,11 +284,44 @@ def make_handler(cfg: Config):
                     new_agent = replace(new_agent, chunk_model=updates["MEMORY_AGENT_CHUNK_MODEL"])
                 if "MEMORY_AGENT_EXTRACT_MODEL" in updates:
                     new_agent = replace(new_agent, extract_model=updates["MEMORY_AGENT_EXTRACT_MODEL"])
+                if "MEMORY_AGENT_RECALL_MODEL" in updates:
+                    new_agent = replace(new_agent, recall_model=updates["MEMORY_AGENT_RECALL_MODEL"])
                 object.__setattr__(cfg, 'agent', new_agent)
 
             self._json({"ok": True, "updated": updates,
                         "restart_required": True,
                         "hint": "provider/model 变更已写入 .env 并同步当前页面;已存在的 LLM 调用路径需重启服务才能全局生效"})
+
+        # ---- 过程 prompt 正本(切块/提取/重构)----
+        def _api_prompts(self) -> None:
+            """列出五个过程 prompt 正本(键/所属过程/内容)。正本是文件、不进 DB。"""
+            from memory_system import prompt_store
+
+            self._json({"prompts": prompt_store.list_prompts(),
+                        "process_labels": prompt_store.PROCESS_LABELS})
+
+        def _api_save_prompt(self, body) -> None:
+            """写回一个过程 prompt 正本。白名单外的 name / 空 content → 400。
+
+            切块/提取的 prompt 加载有 @lru_cache,prompt_store.write_prompt 写盘后即清缓存,
+            故改完即时生效、无需重启;重构每次现读。回最新的五键列表供前端刷新。
+            """
+            from memory_system import prompt_store
+
+            name = str(body.get("name", "")).strip()
+            content = body.get("content")
+            if not name:
+                return self._json({"error": "缺 name"}, 400)
+            if not isinstance(content, str):
+                return self._json({"error": "缺 content(须为字符串)"}, 400)
+            try:
+                prompt_store.write_prompt(name, content)
+            except prompt_store.PromptError as e:
+                return self._json({"error": str(e)}, 400)
+            except OSError as e:
+                return self._json({"error": f"写入 prompt 失败: {e}"}, 500)
+            self._json({"ok": True, "name": name,
+                        "prompts": prompt_store.list_prompts()})
 
         def _api_get_staging(self, q) -> None:
             from memory_system import staging_store
@@ -437,6 +480,7 @@ def make_handler(cfg: Config):
                 "/api/agent/providers": self._api_add_provider,
                 "/api/embedding/test": self._api_embedding_test,
                 "/api/import": self._api_import,
+                "/api/prompts": self._api_save_prompt,
             }
             handler = routes.get(u.path)
             if handler is None:

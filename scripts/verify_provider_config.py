@@ -144,6 +144,28 @@ try:
     assert cfg_after_delete["agents"]["chunk"]["provider"] == "deepseek", cfg_after_delete
     assert all(p["id"] != "custom_tmp" for p in cfg_after_delete["agents"]["chunk"]["providers"])
     ok("HTTP:删除自定义 provider 后清理 role override")
+
+    # ---- recall_model 门:GET 含 recall_model / POST 改写 .env 后 GET 读回新值 ----
+    cfg_recall = _get(base, "/api/agent/config")
+    recall0 = cfg_recall["agents"].get("recall")
+    assert recall0 and recall0.get("model") == "sonnet", cfg_recall  # 默认 sonnet
+    assert recall0.get("no_provider_channel") is True, recall0        # 如实呈现:无专用 provider 通道
+    ok("HTTP:GET /api/agent/config 含 recall(model=sonnet,无专用 provider 通道)")
+
+    upd_recall = _post(base, "/api/agent/config", {"role": "recall", "model": "haiku"})
+    assert upd_recall.get("ok") and "MEMORY_AGENT_RECALL_MODEL" in upd_recall["updated"], upd_recall
+    env_text = (CFG.home / ".env").read_text("utf-8")
+    assert "MEMORY_AGENT_RECALL_MODEL=haiku" in env_text, env_text
+    cfg_recall2 = _get(base, "/api/agent/config")
+    assert cfg_recall2["agents"]["recall"]["model"] == "haiku", cfg_recall2
+    ok("HTTP:POST recall model 改写 .env,GET 读回 haiku")
+
+    # recall 不接受 provider 通道(如实呈现,不发明 recall_provider):只改 model 生效
+    upd_recall_prov = _post(base, "/api/agent/config",
+                            {"role": "recall", "provider": "deepseek", "model": "sonnet"})
+    assert upd_recall_prov.get("ok"), upd_recall_prov
+    assert not any(k.endswith("PROVIDER") for k in upd_recall_prov["updated"]), upd_recall_prov
+    ok("HTTP:recall 无 provider 通道,POST provider 被忽略,只改 model")
 finally:
     httpd.shutdown()
     httpd.server_close()

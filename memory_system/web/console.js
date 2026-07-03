@@ -18,11 +18,17 @@ var Console = (function () {
   var loaded = false;
   var CONFIG = null;
 
+  // 过程 Prompt 区块状态(与 agent 配置解耦,独立容器 #cfg-prompts,config 重渲不动它)
+  var promptsLoaded = false;
+  var PROMPTS = null;      // [{name, process, process_label, filename, content}]
+  var curPrompt = "";      // 当前选中的 prompt 键
+  var promptDirty = false; // 当前 textarea 有未保存改动
+
   /* ═══════════ 渲染入口 ═══════════ */
 
   function onShow() {
-    if (loaded) return;
-    fetchConfig();
+    if (!loaded) fetchConfig();
+    if (!promptsLoaded) fetchPrompts();
   }
 
   async function fetchConfig() {
@@ -128,6 +134,9 @@ var Console = (function () {
       html += '</div>'; // cfg
     });
 
+    // 重构(recall)agent:只有 model 旋钮,沿用默认 agent provider(无专用 provider 通道)
+    html += renderRecallCard();
+
     // 精简 agent(Phase 2 占位)
     html += '<div class="cfg" style="opacity:0.4">';
     html += cardHead("精简", "Phase 2 · 压缩 agent", false, "未实装");
@@ -138,6 +147,33 @@ var Console = (function () {
     html += '<div class="cfg-foot"><button class="btn btn-s" disabled>连接测试</button></div>';
     html += '</div>';
 
+    return html;
+  }
+
+  function renderRecallCard() {
+    var rc = (CONFIG.agents || {}).recall;
+    if (!rc) return "";
+    var html = '<div class="cfg" data-role="recall">';
+    html += cardHead("重构", "S6 · 检索重构 agent", true, "仅模型");
+    html += '<div class="cfg-body">';
+    // 模型输入(复用 .cfg-model,bindSaveButtons 直接可用)
+    html += '<div class="cfg-row">';
+    html += '<span class="cfg-k">模型</span>';
+    html += '<input type="text" class="inp cfg-model" style="width:auto;min-width:200px" value="' +
+      escAttr(rc.model || "") + '" placeholder="如 sonnet / haiku">';
+    html += '</div>';
+    // Provider:如实呈现——recall 无专用通道,沿用默认 agent provider(只读展示,无下拉)
+    html += '<div class="cfg-row">';
+    html += '<span class="cfg-k">Provider</span>';
+    html += '<span class="cfg-v" style="font-size:12px;color:var(--muted)">' +
+      esc(rc.provider || "默认") + ' · 沿用默认 agent provider(无专用通道)</span>';
+    html += '</div>';
+    html += '</div>'; // cfg-body
+    html += '<div class="cfg-foot">';
+    html += '<button class="btn btn-s btn-ok save-btn" data-role="recall" style="margin-left:auto">保存</button>';
+    html += '<span class="save-status" style="font-size:11px;padding:0"></span>';
+    html += '</div>';
+    html += '</div>'; // cfg
     return html;
   }
 
@@ -545,6 +581,155 @@ var Console = (function () {
     } catch (e) {
       toast("删除请求失败: " + String(e), true);
     }
+  }
+
+  /* ═══════════ 过程 Prompt 编辑 ═══════════ */
+
+  async function fetchPrompts() {
+    try {
+      var d = await (await fetch("/api/prompts")).json();
+      PROMPTS = (d && d.prompts) || [];
+    } catch (e) {
+      PROMPTS = { _error: String(e) };
+    }
+    promptsLoaded = true;
+    renderPrompts();
+  }
+
+  var PROC_ORDER = ["chunk", "extract", "recall"];
+  var PROC_LABELS = { chunk: "切块", extract: "提取", recall: "重构" };
+
+  function renderPrompts() {
+    var el = document.getElementById("cfg-prompts");
+    if (!el) return;
+    if (!PROMPTS) { el.innerHTML = ""; return; }
+    if (PROMPTS._error) {
+      el.innerHTML = '<div class="alert err" style="margin:0">加载 prompt 失败: ' + esc(PROMPTS._error) + '</div>';
+      return;
+    }
+    var html = '<div class="cfg" id="cfg-prompt-box">';
+    html += cardHead("过程 Prompt", "切块 / 提取 / 重构的 system prompt 正本 · 改完即时生效", true, String(PROMPTS.length));
+    html += '<div class="cfg-body">';
+    html += '<div class="cfg-row"><span class="cfg-k">选择</span>';
+    html += '<select class="inp" id="prompt-pick" style="width:auto;min-width:300px">';
+    PROC_ORDER.forEach(function (proc) {
+      var items = PROMPTS.filter(function (p) { return p.process === proc; });
+      if (!items.length) return;
+      html += '<optgroup label="' + escAttr(PROC_LABELS[proc] || proc) + '">';
+      items.forEach(function (p) {
+        html += '<option value="' + escAttr(p.name) + '">' + esc(p.filename) + '</option>';
+      });
+      html += '</optgroup>';
+    });
+    html += '</select></div>';
+    html += '<div class="cfg-row" style="align-items:flex-start"><span class="cfg-k">内容</span>';
+    html += '<textarea id="prompt-text" class="inp" spellcheck="false" ' +
+      'style="width:100%;min-height:340px;font-family:ui-monospace,Menlo,monospace;font-size:12px;line-height:1.5;white-space:pre;overflow:auto"></textarea>';
+    html += '</div>';
+    html += '</div>'; // cfg-body
+    html += '<div class="cfg-foot">';
+    html += '<button class="btn btn-s btn-ok" id="prompt-save">保存</button>';
+    html += '<button class="btn btn-s" id="prompt-reload" title="放弃改动,重新拉取磁盘当前值">恢复为磁盘当前值</button>';
+    html += '<span class="save-status" id="prompt-status" style="font-size:11px;padding:0"></span>';
+    html += '</div>';
+    html += '</div>'; // cfg
+    el.innerHTML = html;
+
+    if (!curPrompt || !PROMPTS.some(function (p) { return p.name === curPrompt; })) {
+      curPrompt = PROMPTS.length ? PROMPTS[0].name : "";
+    }
+    var pick = document.getElementById("prompt-pick");
+    if (pick) pick.value = curPrompt;
+    fillPromptText(curPrompt);
+    bindPrompts();
+  }
+
+  function promptByName(name) {
+    return (PROMPTS || []).find(function (p) { return p.name === name; }) || null;
+  }
+
+  function fillPromptText(name) {
+    var ta = document.getElementById("prompt-text");
+    if (!ta) return;
+    var p = promptByName(name);
+    ta.value = p ? p.content : "";
+    promptDirty = false;
+  }
+
+  function bindPrompts() {
+    var pick = document.getElementById("prompt-pick");
+    var ta = document.getElementById("prompt-text");
+    var save = document.getElementById("prompt-save");
+    var reload = document.getElementById("prompt-reload");
+
+    if (pick) {
+      pick.addEventListener("change", function () {
+        if (promptDirty && !confirm("当前 prompt 有未保存改动,切换将丢弃。继续?")) {
+          this.value = curPrompt;  // 撤回选择
+          return;
+        }
+        curPrompt = this.value;
+        fillPromptText(curPrompt);
+        var st = document.getElementById("prompt-status");
+        if (st) st.textContent = "";
+      });
+    }
+    if (ta) {
+      ta.addEventListener("input", function () { promptDirty = true; });
+    }
+    if (save) {
+      save.addEventListener("click", function () { savePrompt(this); });
+    }
+    if (reload) {
+      reload.addEventListener("click", function () { reloadPrompts(this); });
+    }
+  }
+
+  async function savePrompt(btn) {
+    var ta = document.getElementById("prompt-text");
+    var statusEl = document.getElementById("prompt-status");
+    if (!ta || !curPrompt) return;
+    var content = ta.value;
+    if (!content.trim()) {
+      if (statusEl) { statusEl.textContent = "✗ 内容不能为空"; statusEl.style.color = "var(--err)"; }
+      toast("prompt 不能为空", true);
+      return;
+    }
+    await once("save-prompt:" + curPrompt, async function () {
+      if (statusEl) { statusEl.textContent = "保存中…"; statusEl.style.color = "var(--muted)"; }
+      var r = await postJSON("/api/prompts", { name: curPrompt, content: content });
+      if (!r || r.error) {
+        if (statusEl) { statusEl.textContent = "✗ " + (r ? r.error : "无响应"); statusEl.style.color = "var(--err)"; }
+        toast("保存失败: " + (r ? r.error : "无响应"), true);
+        return;
+      }
+      if (r.ok) {
+        if (r.prompts) PROMPTS = r.prompts;  // 用服务端回读的最新正本更新本地缓存
+        promptDirty = false;
+        if (statusEl) { statusEl.textContent = "✓ 已保存,即时生效"; statusEl.style.color = "var(--claude)"; }
+        toast(curPrompt + " prompt 已保存,即时生效");
+      }
+    }, btn);
+  }
+
+  async function reloadPrompts(btn) {
+    if (promptDirty && !confirm("放弃当前未保存改动,重新拉取磁盘当前值?")) return;
+    await once("reload-prompts", async function () {
+      try {
+        var d = await (await fetch("/api/prompts")).json();
+        if (d && d.prompts) {
+          PROMPTS = d.prompts;
+          fillPromptText(curPrompt);
+          var st = document.getElementById("prompt-status");
+          if (st) { st.textContent = "✓ 已恢复"; st.style.color = "var(--muted)"; }
+          toast("已恢复为磁盘当前值");
+        } else {
+          toast("恢复失败: 无响应", true);
+        }
+      } catch (e) {
+        toast("恢复请求失败: " + String(e), true);
+      }
+    }, btn);
   }
 
   /* ═══════════ 绑定所有事件 ═══════════ */

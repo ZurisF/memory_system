@@ -26,6 +26,8 @@ os.environ["MEMORY_AGENT_PROVIDER"] = "fake"
 os.environ["MEMORY_EMBED_PROVIDER"] = "fake"
 os.environ["MEMORY_EMBED_DIM"] = "16"
 
+from memory_system import prompt_store  # noqa: E402
+from memory_system.chunk import load_chunk_prompt  # noqa: E402
 from memory_system.config import load_config  # noqa: E402
 from memory_system.db import migrate  # noqa: E402
 from memory_system.db.connection import connect  # noqa: E402
@@ -198,7 +200,56 @@ def main() -> None:
         assert not left or all(e["stage_id"] != "e1" for e in left[0]["episodes"]), \
             "staging delete 应撤掉 e1"
         ok("删 staging:干净撤掉条目")
+
+        # ---- 过程 Prompt API 门 ----
+        # prompt 正本在 git 仓库的包目录(非临时 home);测试改动后必须在 finally 回写原文。
+        orig_prompts = {p["name"]: p["content"] for p in prompt_store.list_prompts()}
+        EXPECT_KEYS = {"chunk_system", "extract_system", "recall_episode_system",
+                       "recall_concept_system", "opening_system"}
+
+        listed = _get(base, "/api/prompts")
+        got_keys = {p["name"] for p in listed["prompts"]}
+        assert got_keys == EXPECT_KEYS, got_keys
+        assert all(p["content"].strip() for p in listed["prompts"]), "五个 prompt 内容不应为空"
+        assert {p["process"] for p in listed["prompts"]} == {"chunk", "extract", "recall"}, listed
+        ok("GET /api/prompts:五键齐全,含所属过程与内容")
+
+        # 缓存即时生效证明:先触发 chunk prompt 的 lru_cache(载入原值),POST 新值后应立即读到新值
+        cached_before = load_chunk_prompt()
+        assert cached_before == orig_prompts["chunk_system"], "缓存应先载入原值"
+        new_body = orig_prompts["chunk_system"] + "\n# verify_web_api 临时追加行\n"
+        saved_p = _post(base, "/api/prompts", {"name": "chunk_system", "content": new_body})
+        assert saved_p.get("ok"), saved_p
+        roundtrip = next(p for p in saved_p["prompts"] if p["name"] == "chunk_system")
+        assert roundtrip["content"] == new_body, "POST 后回读内容应一致"
+        assert _get(base, "/api/prompts")
+        assert load_chunk_prompt() == new_body, "写回后 lru_cache 应已失效并读到新值(即时生效)"
+        ok("POST /api/prompts:改一个再读回一致,且 lru_cache 已即时刷新")
+
+        # 白名单外的 name → 400(堵越权 / 路径穿越)
+        st_bad, bad = _post_status(base, "/api/prompts",
+                                   {"name": "../../etc/passwd", "content": "x"})
+        assert st_bad == 400 and "error" in bad, (st_bad, bad)
+        st_bad2, bad2 = _post_status(base, "/api/prompts",
+                                     {"name": "nonexistent_prompt", "content": "x"})
+        assert st_bad2 == 400, (st_bad2, bad2)
+        ok("POST /api/prompts:白名单外 name 回 400")
+
+        # 空 content(strip 后为空)→ 400
+        st_empty, empty = _post_status(base, "/api/prompts",
+                                       {"name": "extract_system", "content": "   \n\t "})
+        assert st_empty == 400 and "error" in empty, (st_empty, empty)
+        # 400 拒绝后正本不应被清空
+        still = next(p for p in _get(base, "/api/prompts")["prompts"] if p["name"] == "extract_system")
+        assert still["content"] == orig_prompts["extract_system"], "空 content 被拒后正本不应改变"
+        ok("POST /api/prompts:空 content 回 400,正本不被污染")
     finally:
+        # 无论断言是否通过,回写 prompt 正本原文(正本在仓库内,绝不许被测试污染)
+        try:
+            for _name, _content in orig_prompts.items():
+                prompt_store.write_prompt(_name, _content)
+        except NameError:
+            pass  # 尚未采集到原文(前置断言更早失败),无需回写
         httpd.shutdown()
         httpd.server_close()
 
