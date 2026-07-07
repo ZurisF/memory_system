@@ -18,6 +18,9 @@
 - S6-6:选材填槽(槽 A 最新条 / 槽 B tier>=2 压舱 / 硬顶去重)、只读窥视不刷任何时钟、
         三部分输入重构、dirty 门(无 dirty 跳过、--force 强跑)、CLI show/rebuild、
         写入侧 confirm 接线冒出 .dirty、红线(选材无 uuid/embedding/DB id/source_text)。
+- P2-1:session 去重(同 session 二次调用首次三槽条目全消失)、无 session_key 零副作用
+        (injected_log 零行、行为同 Phase 1)、跨 session 冷却翻转排序且 factor=1.0 还原、
+        窗口外注入不冷却、touch=False 不写日志、红线(带 session_key 输出无 uuid/向量/DB id)。
 
 跑法:.venv/bin/python scripts/verify_s6.py
 (评测夹具 eval/queries.jsonl + scripts/eval_recall.py 对真实库跑,不进本回归。)
@@ -620,6 +623,130 @@ def seg_s6_6() -> None:
     ok("写入侧接线:confirm 新 episode → opening .dirty 出现")
 
 
+# ============ P2-1:session 去重 / 跨 session 冷却(injected_log 台账)============
+def seg_s6_p2_1() -> None:
+    import json
+    from dataclasses import replace
+    from datetime import timedelta
+
+    from memory_system.recall import recall_episode
+
+    Q1 = "星际航行与曲率引擎"
+    # candidate_multiplier=1(与 seg_s6_3 同):每路各取 topk_final=3,单/双路可精确构造。
+    cfg3 = replace(CFG, recall=replace(CFG.recall, candidate_multiplier=1))
+
+    def _pids(res: dict) -> list:
+        s = res["slots"]
+        return ([p["public_id"] for p in s["primary"]]
+                + [x["public_id"] for x in s["same_source"]]
+                + [x["public_id"] for x in s["associative"]])
+
+    def _clear_log() -> None:
+        con = connect(CFG.db_path)
+        try:
+            con.execute("DELETE FROM injected_log")
+            con.commit()
+        finally:
+            con.close()
+
+    def _count(session: str | None = None) -> int:
+        con = connect(CFG.db_path)
+        try:
+            if session is None:
+                return con.execute("SELECT COUNT(*) FROM injected_log").fetchone()[0]
+            return con.execute("SELECT COUNT(*) FROM injected_log WHERE session_key=?",
+                               (session,)).fetchone()[0]
+        finally:
+            con.close()
+
+    _clear_log()
+
+    # (1) 无 session_key:行为同 Phase 1,injected_log 零行(零副作用)
+    base = recall_episode(cfg3, Q1, now=NOW)  # touch 默认 True,但无 session_key
+    assert _count() == 0, "无 session_key 不该写 injected_log"
+    assert _pids(base), "基线应有命中"
+    ok("无 session_key:行为同 Phase 1,injected_log 零行(零副作用)")
+
+    # (2) 同 session 去重:首次注入把三槽全部 public_id 写台账;二次调用这些条目从所有槽消失
+    _clear_log()
+    first = recall_episode(cfg3, Q1, session_key="sessX", now=NOW)  # touch=True 默认 → 写台账
+    first_ids = set(_pids(first))
+    con = connect(CFG.db_path)
+    try:
+        logged = {r[0] for r in con.execute(
+            "SELECT public_id FROM injected_log WHERE session_key='sessX'")}
+    finally:
+        con.close()
+    assert first_ids and logged == first_ids, (logged, first_ids)
+    second = recall_episode(cfg3, Q1, session_key="sessX", now=NOW)
+    second_ids = set(_pids(second))
+    assert first_ids.isdisjoint(second_ids), (first_ids, second_ids)
+    ok("同 session 去重:首注入三槽 public_id 全入台账,二次调用从所有槽硬排除")
+
+    # (3) 跨 session 冷却:给 top-1 记一条「其他 session」的近期注入 → 分被乘子压低 → 排序翻转
+    _clear_log()
+    b2 = recall_episode(cfg3, Q1, touch=False, now=NOW)  # 只读取基线排序
+    prim = b2["slots"]["primary"]
+    assert len(prim) >= 2, prim
+    top1, top2 = prim[0]["public_id"], prim[1]["public_id"]
+    con = connect(CFG.db_path)
+    try:
+        con.execute("INSERT INTO injected_log(session_key, public_id, tool, hit_at) "
+                    "VALUES ('other-sess', ?, 'episode', ?)", (top1, NOW.isoformat()))
+        con.commit()
+    finally:
+        con.close()
+    # 决定性乘子(0.01)保证翻转确定,不依赖天然近似分;factor=1.0 再验旋钮还原。
+    cfg_cool = replace(CFG, recall=replace(
+        CFG.recall, candidate_multiplier=1, cooldown_factor=0.01, cooldown_hours=24.0))
+    cooled = recall_episode(cfg_cool, Q1, session_key="viewer", touch=False, now=NOW)
+    assert cooled["slots"]["primary"][0]["public_id"] == top2, \
+        ([p["public_id"] for p in cooled["slots"]["primary"]], top1, top2)
+    assert _count("viewer") == 0, "touch=False 不该写台账"
+    ok(f"冷却:top-1({top1})被其他 session 近期注入 → 乘子压低,top-2({top2})上位翻转")
+
+    # (4) 旋钮:cooldown_factor=1.0 → 冷却关闭,排序还原
+    cfg_off = replace(CFG, recall=replace(
+        CFG.recall, candidate_multiplier=1, cooldown_factor=1.0, cooldown_hours=24.0))
+    restored = recall_episode(cfg_off, Q1, session_key="viewer", touch=False, now=NOW)
+    assert restored["slots"]["primary"][0]["public_id"] == top1, \
+        [p["public_id"] for p in restored["slots"]["primary"]]
+    ok("旋钮:cooldown_factor=1.0 → 冷却关闭,排序还原(top-1 复位)")
+
+    # (5) 窗口外:hit_at 早于 cooldown_hours(48h>24h)的注入不触发冷却
+    _clear_log()
+    con = connect(CFG.db_path)
+    try:
+        con.execute("INSERT INTO injected_log(session_key, public_id, tool, hit_at) "
+                    "VALUES ('other-sess', ?, 'episode', ?)",
+                    (top1, (NOW - timedelta(hours=48)).isoformat()))
+        con.commit()
+    finally:
+        con.close()
+    outw = recall_episode(cfg_cool, Q1, session_key="viewer", touch=False, now=NOW)
+    assert outw["slots"]["primary"][0]["public_id"] == top1, "窗口外注入不该冷却"
+    ok("窗口外:hit_at 早于 cooldown_hours(48h>24h),不触发冷却,排序不变")
+
+    # (6) touch=False 不写日志(即便带 session_key)
+    _clear_log()
+    recall_episode(cfg3, Q1, session_key="noWrite", touch=False, now=NOW)
+    assert _count("noWrite") == 0, "touch=False 即便带 session_key 也不该写台账"
+    ok("touch=False:即便带 session_key 也不写 injected_log(eval 零副作用)")
+
+    # (7) 红线:带 session_key 的输出仍无 uuid/向量/DB id,--json 契约不新增日志字段
+    res_rl = recall_episode(cfg3, Q1, session_key="rlcheck", touch=False, now=NOW)
+    blob = json.dumps(res_rl, ensure_ascii=False)
+    for banned in ("uuid", "embedding", "\"id\"", "injected", "cooldown", "session"):
+        assert banned not in blob, f"红线破:输出含 {banned!r}"
+    if res_rl["slots"]["primary"]:
+        assert set(res_rl["slots"]["primary"][0].keys()) == {
+            "public_id", "overview", "summary", "highlights",
+            "source_text", "created_at", "salience_tier", "score"}, \
+            res_rl["slots"]["primary"][0].keys()
+    _clear_log()
+    ok("红线:带 session_key 输出无 uuid/向量/DB id,--json 契约不新增日志字段")
+
+
 def main() -> None:
     build_corpus()
     seg_s6_1()
@@ -628,6 +755,7 @@ def main() -> None:
     seg_s6_4()
     seg_s6_5()
     seg_s6_6()
+    seg_s6_p2_1()
     print("S6 检索层 ALL PASS ✅")
 
 

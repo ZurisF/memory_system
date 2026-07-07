@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import struct
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import sqlite_vec
 
@@ -32,6 +32,7 @@ from memory_system.config import Config
 from memory_system.db import migrate
 from memory_system.db.connection import connect
 from memory_system.embedding import get_provider
+from memory_system.log import get_logger
 from memory_system.recall import decay
 from memory_system.recall.detail import _fts_phrase
 
@@ -67,14 +68,22 @@ def recall_episode(
     *,
     touch: bool = True,
     now: datetime | None = None,
+    session_key: str | None = None,
 ) -> dict:
     """情景检索。返回 §5 episode 契约:{mode, query, frame_nodes, slots:{primary/same_source/associative}}。
 
     `touch=False` 供 eval/只读场景关掉时钟刷新(§S6-8);默认刷 top-1+同源。
     meta 锁不符抛 ValueError(调用方决定怎么退出)。
+
+    Phase 2 的 `session_key`(裁定 §0.2–0.5):
+      - 为 None(CLI 手动/eval 夹具默认):完全等价 Phase 1——不去重、不冷却、不写日志。
+      - 非空:同 session 已注入的 public_id 从**三槽全部**候选硬排除(去重,dedup_session 总开关);
+        其他 session 在 cooldown_hours 窗口内注入过的候选 RRF×衰减分乘 cooldown_factor(冷却,温和降序);
+        且 touch=True 时把返回三槽全部 public_id 写 injected_log(hit_at=now),与时钟刷新同一事务。
     """
     rc = cfg.recall
     now = now or datetime.now(timezone.utc)
+    now_aware = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
     empty = {"mode": "episode", "query": query, "frame_nodes": [],
              "slots": {"primary": [], "same_source": [], "associative": []}}
     q = (query or "").strip()
@@ -87,6 +96,21 @@ def recall_episode(
     try:
         migrate.up(con)
         _check_meta_lock(con, provider)  # ① 只读校验,不符即拒
+
+        # Phase 2:去重/冷却台账。无 session_key 全关(裁定 §0.4),两集皆空 = Phase 1 行为。
+        dedup_pids: set[str] = set()      # 本 session 已注入(硬排除)
+        cooldown_pids: set[str] = set()   # 其他 session 窗口内注入(软降序)
+        if session_key:
+            if rc.dedup_session:
+                dedup_pids = {r["public_id"] for r in con.execute(
+                    "SELECT DISTINCT public_id FROM injected_log WHERE session_key=?",
+                    (session_key,))}
+            if rc.cooldown_hours > 0 and rc.cooldown_factor != 1.0:
+                window_start = (now_aware - timedelta(hours=rc.cooldown_hours)).isoformat()
+                cooldown_pids = {r["public_id"] for r in con.execute(
+                    "SELECT DISTINCT public_id FROM injected_log "
+                    "WHERE session_key != ? AND hit_at >= ?",
+                    (session_key, window_start))}
 
         # ② 双路召回,各取 k 条(过滤放应用层,两路对称)
         qvec = provider.embed([q])[0]
@@ -116,8 +140,9 @@ def recall_episode(
                        last_accessed_at, activated_at
                 FROM episodes WHERE id IN ({ph})""", cand_ids)}
 
-        # ③ 硬过滤 active。(session 去重、跨 session 冷却:Phase 2,injected_log/cooldown_log 届时一起来。)
-        active = {eid: r for eid, r in rows.items() if r["status"] == "active"}
+        # ③ 硬过滤 active + session 去重(dedup_pids 空时退化为纯 active 过滤)。
+        active = {eid: r for eid, r in rows.items()
+                  if r["status"] == "active" and r["public_id"] not in dedup_pids}
 
         # ④ RRF(只用名次)+ ⑤ 衰减乘子(温和乘子,不是独立权重轴)
         final: dict[int, float] = {}
@@ -131,6 +156,20 @@ def recall_episode(
                 r["last_accessed_at"], r["salience_tier"], rc, now,
                 activated_at=r["activated_at"], created_at=r["created_at"])
             final[eid] = rrf * (1.0 + rc.w_activation * act)
+
+        # ⑤b 跨 session 冷却(温和乘子,裁定 §0.3):其他 session 窗口内注入过的候选分乘 cooldown_factor。
+        #     只降序不排除——回忆线索永远响应。冷却状态落日志(可重放红线),但不进 --json 契约。
+        if cooldown_pids:
+            cooled = sorted(active[eid]["public_id"] for eid in final
+                            if active[eid]["public_id"] in cooldown_pids)
+            for eid in final:
+                if active[eid]["public_id"] in cooldown_pids:
+                    final[eid] *= rc.cooldown_factor
+            if cooled:
+                get_logger().info(
+                    "recall episode 冷却生效(可重放): session=%s factor=%s window_h=%s cooled=%s",
+                    session_key, rc.cooldown_factor, rc.cooldown_hours,
+                    json.dumps(cooled, ensure_ascii=False))
 
         # ⑥ 主槽:final 降序取 topk_final(同分按 created_at/public_id 定序,保证可重放)
         primary_ids = sorted(
@@ -150,7 +189,8 @@ def recall_episode(
                 if pos is not None:
                     span = rc.same_source_span
                     neigh = sess[max(0, pos - span):pos] + sess[pos + 1:pos + 1 + span]
-                    same_rows = [r for r in neigh if r["id"] not in set(primary_ids)]
+                    same_rows = [r for r in neigh if r["id"] not in set(primary_ids)
+                                 and r["public_id"] not in dedup_pids]  # 同源槽同样硬去重
 
         # ⑧ 联想槽:主槽经膜拿 node → 反查 → 按与 query 的 overview 向量相似度排
         frame_labels: list[str] = []
@@ -171,7 +211,7 @@ def recall_episode(
                     f"SELECT DISTINCT e.id, e.public_id, e.summary, e.highlights_json "
                     f"FROM episodes e JOIN episode_nodes en ON en.episode_id=e.id "
                     f"WHERE en.node_id IN ({phn}) AND e.status='active'", node_ids)
-                    if r["id"] not in exclude]
+                    if r["id"] not in exclude and r["public_id"] not in dedup_pids]
                 if cands:
                     phc = ",".join("?" * len(cands))
                     dist = {r["episode_id"]: _l2(qvec, r["embedding"]) for r in con.execute(
@@ -203,9 +243,19 @@ def recall_episode(
             "highlights": _highlights(r), "via_nodes": sorted(via.get(r["id"], [])),
         } for r in assoc_rows]
 
-        # ⑩ 时钟:只刷 top-1 + 同源;联想槽不刷(裁定,不是建议)
+        # ⑩ 时钟:只刷 top-1 + 同源;联想槽不刷(裁定,不是建议)。
+        #    Phase 2:session_key 非空且 touch=True → 三槽全部 public_id 写 injected_log,与时钟同一事务。
         if touch and primary_ids:
             decay.touch_episodes(con, [primary_ids[0]] + [r["id"] for r in same_rows], now)
+            if session_key:
+                inj_pids = ([p["public_id"] for p in primary]
+                            + [s["public_id"] for s in same_source]
+                            + [a["public_id"] for a in associative])
+                hit_at = now_aware.isoformat()
+                con.executemany(
+                    "INSERT INTO injected_log(session_key, public_id, tool, hit_at) "
+                    "VALUES (?, ?, 'episode', ?)",
+                    [(session_key, pid, hit_at) for pid in inj_pids])
             con.commit()
     finally:
         con.close()

@@ -118,6 +118,34 @@ class RecallConfig:
     window_tokens: int = 48        # FTS snippet 窗宽(FTS5 上限 64)
     opening_max_items: int = 3     # 开场硬顶
     opening_token_budget: int = 250
+    # S6 Phase 2:session 去重 / 跨 session 冷却(仅作用于 episode 检索;无 session_key 全关)。
+    dedup_session: bool = True     # session_key 存在时是否硬去重(总开关)
+    cooldown_hours: float = 24.0   # 跨 session 冷却窗口;<=0 关闭
+    cooldown_factor: float = 0.8   # 冷却乘子;1.0 关闭
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    # 环境变量解析布尔;缺省或坏值回落默认,不让坏配置炸检索。
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    v = raw.strip().lower()
+    if v in ("1", "true", "yes", "on"):
+        return True
+    if v in ("0", "false", "no", "off"):
+        return False
+    return default
+
+
+def _env_float(name: str, default: float) -> float:
+    # 环境变量解析浮点;缺省或坏值回落默认。
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
 
 
 def _parse_half_lives(raw: str, default: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -148,6 +176,9 @@ def _recall_from_env() -> RecallConfig:
             "MEMORY_RECALL_OPENING_MAX_ITEMS", str(d.opening_max_items))),
         opening_token_budget=int(os.environ.get(
             "MEMORY_RECALL_OPENING_TOKEN_BUDGET", str(d.opening_token_budget))),
+        dedup_session=_env_bool("MEMORY_RECALL_DEDUP_SESSION", d.dedup_session),
+        cooldown_hours=_env_float("MEMORY_RECALL_COOLDOWN_HOURS", d.cooldown_hours),
+        cooldown_factor=_env_float("MEMORY_RECALL_COOLDOWN_FACTOR", d.cooldown_factor),
     )
 
 

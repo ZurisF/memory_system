@@ -578,7 +578,7 @@ def _recall_episode(cfg: Config, args: argparse.Namespace) -> int:
     from memory_system.recall import recall_episode, reconstruct
 
     try:
-        result = recall_episode(cfg, args.query)
+        result = recall_episode(cfg, args.query, session_key=args.session)
     except ValueError as e:  # meta 锁不符:查询向量与库内向量不同模型/维度
         print(f"检索拒绝: {e}")
         return 2
@@ -806,6 +806,8 @@ def build_parser() -> argparse.ArgumentParser:
     re_.add_argument("--raw", action="store_true",
                      help="输出结构化槽位,不走重构(调试逃生口;默认重构成自然语言回忆)")
     re_.add_argument("--json", action="store_true", help="机器可读输出(默认人类可读)")
+    re_.add_argument("--session", default=None,
+                     help="会话标识:同 session 去重、跨 session 冷却(默认无=Phase 1 行为,不写台账)")
     rn = rcsub.add_parser("concept", help="概念检索:node/别名精确命中 → 膜 join 全量取(概念层,无原文)")
     rn.add_argument("node", help="node label 或别名(精确匹配;miss 时列相近 label)")
     rn.add_argument("--context", default=None,
