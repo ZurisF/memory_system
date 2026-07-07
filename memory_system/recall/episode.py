@@ -62,6 +62,36 @@ def _highlights(row: sqlite3.Row) -> list:
     return json.loads(raw) if raw else []
 
 
+def _alias_bridges(
+    con: sqlite3.Connection, ep_ids: list[int], src_by_id: dict[int, str]
+) -> dict[int, list[str]]:
+    """别名露出锚定(裁定 §0.6):对给定 episode,取所挂 node 的全部别名(膜 join + node_aliases),
+    逐个对该 episode 的库内 source_text 做 Python 子串判断——别名字面出现且规范 label 未字面出现
+    → 收一行「文中「<alias>」= 概念 <label>」;两者都出现或都不出现都不收(别名不必管)。
+    src_by_id 给 episode_id → 库内原文(判据用,不进对外输出;同源/联想槽输出虽不带原文,
+    判据仍取 DB 侧原文)。返回 episode_id → 桥接行列表(去重 + 稳定排序);无桥接的不进字典。
+    concept.py 入口的 alias_bridge(入口解析)语义不同,不在此列。
+    """
+    bridges: dict[int, list[str]] = {}
+    if not ep_ids:
+        return bridges
+    ph = ",".join("?" * len(ep_ids))
+    for r in con.execute(
+            f"SELECT en.episode_id AS eid, n.label AS label, a.alias AS alias "
+            f"FROM episode_nodes en JOIN nodes n ON n.id = en.node_id "
+            f"JOIN node_aliases a ON a.node_id = n.id "
+            f"WHERE en.episode_id IN ({ph})", list(ep_ids)):
+        src = src_by_id.get(r["eid"]) or ""
+        if r["alias"] in src and r["label"] not in src:
+            line = f"文中「{r['alias']}」= 概念 {r['label']}"
+            lst = bridges.setdefault(r["eid"], [])
+            if line not in lst:
+                lst.append(line)
+    for eid in bridges:
+        bridges[eid].sort()
+    return bridges
+
+
 def recall_episode(
     cfg: Config,
     query: str,
@@ -227,20 +257,37 @@ def recall_episode(
                             [r["id"] for r in assoc_rows] + node_ids):
                         via.setdefault(r["episode_id"], []).append(r["label"])
 
+        # ⑧b 别名桥接(裁定 §0.6):三槽每条 episode,别名字面出现且规范 label 未出现 → 附桥接行。
+        #     同源/联想槽输出不带 source_text,判据仍 grep 库内 source_text(DB 侧现取)。
+        bridge_ids = (list(primary_ids) + [r["id"] for r in same_rows]
+                      + [r["id"] for r in assoc_rows])
+        src_by_id: dict[int, str] = {i: active[i]["source_text"] for i in primary_ids}
+        miss_src = [i for i in bridge_ids if i not in src_by_id]
+        if miss_src:
+            phs = ",".join("?" * len(miss_src))
+            for r in con.execute(
+                    f"SELECT id, source_text FROM episodes WHERE id IN ({phs})", miss_src):
+                src_by_id[r["id"]] = r["source_text"]
+        bridges = _alias_bridges(con, bridge_ids, src_by_id)
+
         # ⑨ 组装(手工挑字段红线;主槽带原文,同源/联想只 summary 级)
+        #    alias_bridges 无桥接时省略该键(契约选择:省略而非空列表,三槽一致)。
         primary = [{
             "public_id": active[i]["public_id"], "overview": active[i]["overview"],
             "summary": active[i]["summary"], "highlights": _highlights(active[i]),
             "source_text": active[i]["source_text"], "created_at": active[i]["created_at"],
             "salience_tier": active[i]["salience_tier"], "score": round(final[i], 6),
+            **({"alias_bridges": bridges[i]} if bridges.get(i) else {}),
         } for i in primary_ids]
         same_source = [{
             "public_id": r["public_id"], "summary": r["summary"],
             "highlights": _highlights(r), "created_at": r["created_at"],
+            **({"alias_bridges": bridges[r["id"]]} if bridges.get(r["id"]) else {}),
         } for r in same_rows]
         associative = [{
             "public_id": r["public_id"], "summary": r["summary"],
             "highlights": _highlights(r), "via_nodes": sorted(via.get(r["id"], [])),
+            **({"alias_bridges": bridges[r["id"]]} if bridges.get(r["id"]) else {}),
         } for r in assoc_rows]
 
         # ⑩ 时钟:只刷 top-1 + 同源;联想槽不刷(裁定,不是建议)。

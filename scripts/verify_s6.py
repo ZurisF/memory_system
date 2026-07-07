@@ -21,6 +21,9 @@
 - P2-1:session 去重(同 session 二次调用首次三槽条目全消失)、无 session_key 零副作用
         (injected_log 零行、行为同 Phase 1)、跨 session 冷却翻转排序且 factor=1.0 还原、
         窗口外注入不冷却、touch=False 不写日志、红线(带 session_key 输出无 uuid/向量/DB id)。
+- P2-2:别名露出桥接(仅别名出现→桥接在、别名+label 都出现→无、别名不出现→无)、
+        同源/联想槽条目同样出桥接、判据取库内 source_text(槽输出不带原文)、
+        重构 user 消息逐条含桥接行、红线不破。
 
 跑法:.venv/bin/python scripts/verify_s6.py
 (评测夹具 eval/queries.jsonl + scripts/eval_recall.py 对真实库跑,不进本回归。)
@@ -747,6 +750,95 @@ def seg_s6_p2_1() -> None:
     ok("红线:带 session_key 输出无 uuid/向量/DB id,--json 契约不新增日志字段")
 
 
+# ============ P2-2:别名露出 grep 锚定(三槽桥接行)============
+def seg_s6_p2_2() -> None:
+    import json
+    from dataclasses import replace
+
+    from memory_system.agent.fake import FakeChatProvider
+    from memory_system.fragments import Node, write_node
+    from memory_system.recall import recall_episode, reconstruct
+
+    QP = "曲速航线的试飞记录"  # 全新短语,只出现在 P1 的 overview + source_text
+    BR = "文中「弥赛亚」= 概念 AGI"
+
+    def mk(pid: str, ov: str, src: str, created: str, *,
+           sess: str | None = None, nodes: list[str] | None = None) -> Episode:
+        return Episode(public_id=pid, overview=ov, summary=f"{pid} 摘要", source_text=src,
+                       salience_tier=1, status="active", created_at=created,
+                       activated_at=created, source_session_id=sess, nodes=nodes or [])
+
+    # node「AGI」别名「弥赛亚」。P1 双路命中做主槽 top-1;D1/D2 的 overview=QP 灌满向量 top-k
+    # (candidate_multiplier=1 ⇒ k=3,恰好 P1+D1+D2 三条零距离),把同源/联想候选挤出候选集,
+    # 使填槽确定(照 seg_s6_3 的构造术)。同源槽走 sess-pm 内紧邻,联想槽走膜「AGI」反查。
+    eps = [
+        mk("ep_pm000001", QP, f"{QP}。我们私下把它叫弥赛亚,期待那一刻。",
+           "2026-06-25T11:00:00+00:00", sess="sess-pm", nodes=["AGI"]),      # 仅别名→桥接(主槽)
+        mk("ep_pm000002", "琐记A前", "关于弥赛亚也就是 AGI 的争论没完。",
+           "2026-06-25T10:00:00+00:00", sess="sess-pm", nodes=["AGI"]),      # 都出现→无(同源)
+        mk("ep_pm000003", "琐记B后", "又提到弥赛亚,但没写全称。",
+           "2026-06-25T12:00:00+00:00", sess="sess-pm", nodes=["AGI"]),      # 仅别名→桥接(同源)
+        mk("ep_pm000004", "联想A概览", "联想里也闪过弥赛亚这个词。",
+           "2026-06-11T09:00:00+00:00", sess="sess-other", nodes=["AGI"]),   # 仅别名→桥接(联想)
+        mk("ep_pm000005", "联想B概览", "这条完全没提那个私人别名或全称。",
+           "2026-06-12T09:00:00+00:00", sess="sess-other2", nodes=["AGI"]),  # 别名不出现→无(联想)
+        mk("ep_pm000006", QP, "仅作向量陪跑之一,不含查询短语本身。", "2026-06-01T09:00:00+00:00"),
+        mk("ep_pm000007", QP, "仅作向量陪跑之二,同样不含它。", "2026-06-02T09:00:00+00:00"),
+    ]
+    for ep in eps:
+        write_episode(CFG.episodes_dir, ep)
+    write_node(CFG.nodes_dir, Node(label="AGI", type="concept",
+                                   created_at="t0", updated_at="t0", aliases=["弥赛亚"]))
+    rebuild(CFG, FakeProvider(model="fake", dim=16))
+
+    cfg2 = replace(CFG, recall=replace(CFG.recall, candidate_multiplier=1))
+    res = recall_episode(cfg2, QP, touch=False, now=NOW)
+    prim, same, assoc = (res["slots"]["primary"], res["slots"]["same_source"],
+                         res["slots"]["associative"])
+    by_pid = {e["public_id"]: e for e in prim + same + assoc}
+
+    # (1) 仅别名出现(规范 label 未出现)→ 主槽 top-1 附桥接行
+    assert prim and prim[0]["public_id"] == "ep_pm000001", [p["public_id"] for p in prim]
+    assert by_pid["ep_pm000001"].get("alias_bridges") == [BR], by_pid["ep_pm000001"]
+    ok("仅别名出现:主槽 top-1(P1)附 alias_bridges 桥接行")
+
+    # (2) 别名与 label 都出现 → 无桥接键;别名不出现 → 无桥接键
+    assert "ep_pm000002" in by_pid and "alias_bridges" not in by_pid["ep_pm000002"], \
+        by_pid.get("ep_pm000002")
+    assert "ep_pm000005" in by_pid and "alias_bridges" not in by_pid["ep_pm000005"], \
+        by_pid.get("ep_pm000005")
+    ok("都出现→无桥接键(SB);别名不出现→无桥接键(A2)")
+
+    # (3) 同源槽 / 联想槽的条目同样能出桥接行
+    assert {s["public_id"] for s in same} == {"ep_pm000002", "ep_pm000003"}, same
+    assert {a["public_id"] for a in assoc} == {"ep_pm000004", "ep_pm000005"}, assoc
+    assert by_pid["ep_pm000003"].get("alias_bridges") == [BR], by_pid["ep_pm000003"]
+    assert by_pid["ep_pm000004"].get("alias_bridges") == [BR], by_pid["ep_pm000004"]
+    ok("同源槽(SA)/联想槽(A1)条目同样出桥接行")
+
+    # (4) 判据取库内 source_text:同源/联想槽输出不带 source_text,桥接仍在
+    for e in same + assoc:
+        assert "source_text" not in e, e
+    ok("同源/联想槽输出不含 source_text,桥接判据取的是 DB 侧原文")
+
+    # (5) 契约红线:带桥接的输出仍无 uuid/向量/DB id
+    blob = json.dumps(res, ensure_ascii=False)
+    for banned in ("uuid", "embedding", "\"id\""):
+        assert banned not in blob, f"红线破:输出含 {banned!r}"
+    ok("红线:别名桥接不破契约(无 uuid/向量/DB id)")
+
+    # (6) fake chat:桥接行随槽位逐条进重构 user 消息
+    seen: dict = {}
+
+    def _cap(system: str, user: str, model: str) -> str:
+        seen["user"] = user
+        return "假回忆"
+
+    reconstruct.run(cfg2, "episode", res, QP, provider=FakeChatProvider(behaviors=[_cap]))
+    assert BR in seen["user"], "重构 user 消息应逐条含桥接行文本"
+    ok("重构输入:桥接行随槽位逐条进 user 消息")
+
+
 def main() -> None:
     build_corpus()
     seg_s6_1()
@@ -756,6 +848,7 @@ def main() -> None:
     seg_s6_5()
     seg_s6_6()
     seg_s6_p2_1()
+    seg_s6_p2_2()
     print("S6 检索层 ALL PASS ✅")
 
 
