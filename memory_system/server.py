@@ -210,12 +210,13 @@ def make_handler(cfg: Config):
                     "model": default_model,
                     "providers": providers,
                 }
-            # 重构(recall)只有 model 旋钮,没有专用 provider 通道:沿用默认 agent provider。
-            # 如实呈现——给出当前生效 provider 供 UI 展示,但不发明 recall_provider(无下拉)。
+            # 重构(recall)专用 provider 通道(S6 Phase 2):provider 如实返回 override 原值
+            # (空串 = 跟随全局,由前端显示「跟随全局」,不在此解析成有效 provider);
+            # providers 列表与 chunk/extract 同源同形状。
             agents["recall"] = {
                 "model": cfg.agent.recall_model,
-                "provider": cfg.agent.provider,
-                "no_provider_channel": True,
+                "provider": cfg.agent.recall_provider,
+                "providers": providers,
             }
 
             # embedding key 状态
@@ -250,9 +251,13 @@ def make_handler(cfg: Config):
                 return self._json({"error": "role 必须是 chunk、extract 或 recall"}, 400)
 
             updates: dict[str, str] = {}
-            # provider 切换(按 role 独立,不再共享)。recall 无专用 provider 通道,不接受 provider。
+            # provider 切换(按 role 独立,不再共享)。recall 接受空串 = 清 override 跟随全局
+            # (S6 Phase 2);chunk/extract 沿用旧语义:空串视作「未改」。
             provider = str(body.get("provider", "")).strip()
-            if role != "recall" and provider and provider in registry.all_provider_ids(cfg):
+            if role == "recall" and "provider" in body:
+                if provider == "" or provider in registry.all_provider_ids(cfg):
+                    updates["MEMORY_AGENT_RECALL_PROVIDER"] = provider
+            elif role != "recall" and provider and provider in registry.all_provider_ids(cfg):
                 prov_key = {"chunk": "MEMORY_AGENT_CHUNK_PROVIDER",
                             "extract": "MEMORY_AGENT_EXTRACT_PROVIDER"}[role]
                 updates[prov_key] = provider
@@ -281,6 +286,8 @@ def make_handler(cfg: Config):
                     new_agent = replace(new_agent, chunk_provider=updates["MEMORY_AGENT_CHUNK_PROVIDER"])
                 if "MEMORY_AGENT_EXTRACT_PROVIDER" in updates:
                     new_agent = replace(new_agent, extract_provider=updates["MEMORY_AGENT_EXTRACT_PROVIDER"])
+                if "MEMORY_AGENT_RECALL_PROVIDER" in updates:
+                    new_agent = replace(new_agent, recall_provider=updates["MEMORY_AGENT_RECALL_PROVIDER"])
                 if "MEMORY_AGENT_CHUNK_MODEL" in updates:
                     new_agent = replace(new_agent, chunk_model=updates["MEMORY_AGENT_CHUNK_MODEL"])
                 if "MEMORY_AGENT_EXTRACT_MODEL" in updates:
@@ -680,6 +687,9 @@ def make_handler(cfg: Config):
                 if cfg.agent.extract_provider == pid:
                     env_updates["MEMORY_AGENT_EXTRACT_PROVIDER"] = ""
                     new_agent = replace(new_agent, extract_provider="")
+                if cfg.agent.recall_provider == pid:
+                    env_updates["MEMORY_AGENT_RECALL_PROVIDER"] = ""
+                    new_agent = replace(new_agent, recall_provider="")
                 if env_updates:
                     update_dotenv(cfg.home / ".env", env_updates)
                 object.__setattr__(cfg, 'agent', new_agent)

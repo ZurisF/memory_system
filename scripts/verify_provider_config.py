@@ -5,6 +5,8 @@ Focus:
 - Placeholder API keys are not treated as available.
 - Editing/deleting a custom provider works and clears role-specific provider overrides.
 - CLI chunk/extract defaults honor MEMORY_AGENT_CHUNK_PROVIDER / MEMORY_AGENT_EXTRACT_PROVIDER.
+- Recall dedicated provider channel (MEMORY_AGENT_RECALL_PROVIDER): GET/POST via
+  /api/agent/config, empty string = follow global, reconstruct resolves it.
 Run: .venv/bin/python scripts/verify_provider_config.py
 """
 
@@ -149,8 +151,7 @@ try:
     cfg_recall = _get(base, "/api/agent/config")
     recall0 = cfg_recall["agents"].get("recall")
     assert recall0 and recall0.get("model") == "sonnet", cfg_recall  # 默认 sonnet
-    assert recall0.get("no_provider_channel") is True, recall0        # 如实呈现:无专用 provider 通道
-    ok("HTTP:GET /api/agent/config 含 recall(model=sonnet,无专用 provider 通道)")
+    ok("HTTP:GET /api/agent/config 含 recall(model=sonnet)")
 
     upd_recall = _post(base, "/api/agent/config", {"role": "recall", "model": "haiku"})
     assert upd_recall.get("ok") and "MEMORY_AGENT_RECALL_MODEL" in upd_recall["updated"], upd_recall
@@ -160,12 +161,63 @@ try:
     assert cfg_recall2["agents"]["recall"]["model"] == "haiku", cfg_recall2
     ok("HTTP:POST recall model 改写 .env,GET 读回 haiku")
 
-    # recall 不接受 provider 通道(如实呈现,不发明 recall_provider):只改 model 生效
-    upd_recall_prov = _post(base, "/api/agent/config",
-                            {"role": "recall", "provider": "deepseek", "model": "sonnet"})
-    assert upd_recall_prov.get("ok"), upd_recall_prov
-    assert not any(k.endswith("PROVIDER") for k in upd_recall_prov["updated"]), upd_recall_prov
-    ok("HTTP:recall 无 provider 通道,POST provider 被忽略,只改 model")
+    # ---- recall 专用 provider 通道(S6 Phase 2)----
+    # GET:provider 如实返回 override 原值(未设时空串 = 跟随全局);providers 与 chunk 同源同形状
+    assert recall0.get("provider") == "", recall0
+    chunk_ids = [p["id"] for p in cfg_recall["agents"]["chunk"]["providers"]]
+    recall_ids = [p["id"] for p in recall0.get("providers", [])]
+    assert recall_ids == chunk_ids and recall_ids, (recall_ids, chunk_ids)
+    ok("HTTP:GET recall 节含 provider(空串=跟随全局)+ providers 与 chunk 同源同形状")
+
+    # POST 非空:写 MEMORY_AGENT_RECALL_PROVIDER 到 .env,GET 读回;model 可同包提交
+    upd_rp = _post(base, "/api/agent/config",
+                   {"role": "recall", "provider": "fake", "model": "sonnet"})
+    assert upd_rp.get("ok"), upd_rp
+    assert upd_rp["updated"].get("MEMORY_AGENT_RECALL_PROVIDER") == "fake", upd_rp
+    assert upd_rp["updated"].get("MEMORY_AGENT_RECALL_MODEL") == "sonnet", upd_rp
+    env_lines = (CFG.home / ".env").read_text("utf-8").splitlines()
+    assert "MEMORY_AGENT_RECALL_PROVIDER=fake" in env_lines, env_lines
+    cfg_rp = _get(base, "/api/agent/config")
+    assert cfg_rp["agents"]["recall"]["provider"] == "fake", cfg_rp
+    # 全局 agent provider 不受影响(chunk 无 override 时回落全局 deepseek)
+    assert cfg_rp["agents"]["chunk"]["provider"] == "deepseek", cfg_rp
+    assert not any(l.startswith("MEMORY_AGENT_PROVIDER=") for l in env_lines), env_lines
+    ok("HTTP:POST recall provider=fake 写 .env 并回读;全局 provider 不受影响")
+
+    # 设了 recall_provider 后,reconstruct 的 provider 解析走专用通道(fake 捕获);全局不动
+    from memory_system.recall import reconstruct as _recon
+    captured: list[str] = []
+    _orig_gcp = _recon.get_chat_provider
+
+    def _capture_gcp(agent_cfg):
+        captured.append(agent_cfg.provider)
+        return _orig_gcp(agent_cfg)
+
+    _recon.get_chat_provider = _capture_gcp
+    try:
+        _structured = {"slots": {"primary": []}, "frame_nodes": []}
+        cfg_dedicated = replace(CFG, agent=replace(
+            CFG.agent, provider="deepseek", recall_provider="fake"))
+        text = _recon.run(cfg_dedicated, "episode", _structured, "provider 通道验收")
+        assert captured[-1] == "fake" and text, (captured, text)
+        assert cfg_dedicated.agent.provider == "deepseek", cfg_dedicated.agent
+        cfg_follow = replace(CFG, agent=replace(
+            CFG.agent, provider="fake", recall_provider=""))
+        _recon.run(cfg_follow, "episode", _structured, "provider 通道验收")
+        assert captured[-1] == "fake", captured  # 空串跟随全局(此处全局=fake)
+    finally:
+        _recon.get_chat_provider = _orig_gcp
+    ok("reconstruct:recall_provider=fake 时拿到 fake、全局 provider 不变;空串跟随全局")
+
+    # POST 空串:清 override 回「跟随全局」,.env 行落成空值
+    upd_rp0 = _post(base, "/api/agent/config", {"role": "recall", "provider": ""})
+    assert upd_rp0.get("ok"), upd_rp0
+    assert upd_rp0["updated"].get("MEMORY_AGENT_RECALL_PROVIDER") == "", upd_rp0
+    env_lines0 = (CFG.home / ".env").read_text("utf-8").splitlines()
+    assert "MEMORY_AGENT_RECALL_PROVIDER=" in env_lines0, env_lines0
+    cfg_rp0 = _get(base, "/api/agent/config")
+    assert cfg_rp0["agents"]["recall"]["provider"] == "", cfg_rp0
+    ok("HTTP:POST recall provider 空串清 override,.env 行为空值,GET 读回空串")
 finally:
     httpd.shutdown()
     httpd.server_close()

@@ -134,7 +134,7 @@ var Console = (function () {
       html += '</div>'; // cfg
     });
 
-    // 重构(recall)agent:只有 model 旋钮,沿用默认 agent provider(无专用 provider 通道)
+    // 重构(recall)agent:model 旋钮 + 专用 provider 下拉(首项「跟随全局」写空串)
     html += renderRecallCard();
 
     // 精简 agent(Phase 2 占位)
@@ -153,23 +153,49 @@ var Console = (function () {
   function renderRecallCard() {
     var rc = (CONFIG.agents || {}).recall;
     if (!rc) return "";
+    var providers = rc.providers || [];
+    var override = rc.provider || "";  // 空串 = 跟随全局 agent provider
+    var globalProv = providers.find(function (p) { return p.default; }) || {};
+    var effectiveId = override || globalProv.id || "";
+    var curProv = providers.find(function (p) { return p.id === effectiveId; }) || {};
+    var keyInfo = findKeyInfo(CONFIG.agent_keys || [], effectiveId);
+
     var html = '<div class="cfg" data-role="recall">';
-    html += cardHead("重构", "S6 · 检索重构 agent", true, "仅模型");
+    html += cardHead("重构", "S6 · 检索重构 agent", curProv.available, override ? "专用" : "跟随全局");
     html += '<div class="cfg-body">';
+
+    // Provider 下拉:首项「跟随全局」写空串;其余选项与 chunk/extract 同源同形状
+    html += '<div class="cfg-row">';
+    html += '<span class="cfg-k">Provider</span>';
+    html += '<select class="inp cfg-provider" style="width:auto;min-width:200px">';
+    html += '<option value=""' + (override ? '' : ' selected') + '>跟随全局' +
+      (globalProv.id ? ' (' + esc(globalProv.id) + ')' : '') + '</option>';
+    visibleProviders(providers, override).forEach(function (p) {
+      var sel = p.id === override ? ' selected' : '';
+      var dis = p.available ? '' : ' disabled';
+      var label = p.id + (p.name ? ' (' + esc(p.name) + ')' : '') + (p.available ? '' : ' 不可用');
+      html += '<option value="' + escAttr(p.id) + '"' + sel + dis + '>' + esc(label) + '</option>';
+    });
+    html += '</select>';
+    html += '</div>';
+
     // 模型输入(复用 .cfg-model,bindSaveButtons 直接可用)
     html += '<div class="cfg-row">';
     html += '<span class="cfg-k">模型</span>';
     html += '<input type="text" class="inp cfg-model" style="width:auto;min-width:200px" value="' +
       escAttr(rc.model || "") + '" placeholder="如 sonnet / haiku">';
     html += '</div>';
-    // Provider:如实呈现——recall 无专用通道,沿用默认 agent provider(只读展示,无下拉)
-    html += '<div class="cfg-row">';
-    html += '<span class="cfg-k">Provider</span>';
-    html += '<span class="cfg-v" style="font-size:12px;color:var(--muted)">' +
-      esc(rc.provider || "默认") + ' · 沿用默认 agent provider(无专用通道)</span>';
+
+    // Key 状态(随下拉动态更新,复用 bindProviderChange)
+    html += '<div class="cfg-row" data-key-row="recall">';
+    html += '<span class="cfg-k">Key 状态</span>';
+    html += renderKeyStatus(keyInfo);
     html += '</div>';
+
     html += '</div>'; // cfg-body
     html += '<div class="cfg-foot">';
+    html += '<button class="btn btn-s test-btn" data-provider="' + escAttr(effectiveId) + '">连接测试</button>';
+    html += '<span class="test-status" style="font-size:11px;padding:0"></span>';
     html += '<button class="btn btn-s btn-ok save-btn" data-role="recall" style="margin-left:auto">保存</button>';
     html += '<span class="save-status" style="font-size:11px;padding:0"></span>';
     html += '</div>';
@@ -368,6 +394,12 @@ var Console = (function () {
         var card = this.closest(".cfg");
         if (!card) return;
         var newProvider = this.value;
+        if (!newProvider && card.dataset.role === "recall") {
+          // recall 选「跟随全局」(空串):key 状态与连接测试按当前全局 provider 走
+          var rcProviders = ((CONFIG.agents || {}).recall || {}).providers || [];
+          var g = rcProviders.find(function (p) { return p.default; });
+          newProvider = g ? g.id : "";
+        }
         var keyInfo = findKeyInfo(CONFIG.agent_keys || [], newProvider);
         var keyRow = card.querySelector("[data-key-row]");
         if (keyRow) {
@@ -423,11 +455,15 @@ var Console = (function () {
         var modelInput = card.querySelector(".cfg-model");
         var provider = providerSel ? providerSel.value : "";
         var model = modelInput ? modelInput.value.trim() : "";
-        if (!provider && !model) { toast("未做任何修改", true); return; }
 
         var body = { role: role };
-        if (provider) body.provider = provider;
+        if (providerSel) {
+          // recall 的空串是合法值(跟随全局),如实提交;chunk/extract 沿用旧语义(空=未改)
+          if (role === "recall") body.provider = provider;
+          else if (provider) body.provider = provider;
+        }
         if (model) body.model = model;
+        if (!("provider" in body) && !model) { toast("未做任何修改", true); return; }
 
         var statusEl = card.querySelector(".save-status");
         saveConfig(body, this, statusEl);

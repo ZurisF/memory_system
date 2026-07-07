@@ -63,6 +63,7 @@ class AgentConfig:
     provider: str = "claude_cli"       # 默认 provider(切块/提取未单独设时回退)
     chunk_provider: str = ""           # 切块专用 provider;空则回退到 provider
     extract_provider: str = ""         # 提取专用 provider;空则回退到 provider
+    recall_provider: str = ""          # S6 重构专用 provider;空 = 跟随全局 provider
     chunk_model: str = "sonnet"        # S3 切块默认(opus 太烧)
     extract_model: str = "opus"        # S4 提取默认
     recall_model: str = "sonnet"       # S6 重构默认(候选集已定死,只做表达;检索路径求快省)
@@ -89,6 +90,7 @@ def _agent_from_env() -> AgentConfig:
         provider=os.environ.get("MEMORY_AGENT_PROVIDER", d.provider),
         chunk_provider=os.environ.get("MEMORY_AGENT_CHUNK_PROVIDER", ""),
         extract_provider=os.environ.get("MEMORY_AGENT_EXTRACT_PROVIDER", ""),
+        recall_provider=os.environ.get("MEMORY_AGENT_RECALL_PROVIDER", ""),
         chunk_model=os.environ.get("MEMORY_AGENT_CHUNK_MODEL", d.chunk_model),
         extract_model=os.environ.get("MEMORY_AGENT_EXTRACT_MODEL", d.extract_model),
         recall_model=os.environ.get("MEMORY_AGENT_RECALL_MODEL", d.recall_model),

@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from memory_system.agent import get_chat_provider
@@ -58,7 +59,13 @@ def run(cfg: Config, mode: str, structured: dict, user_query: str, *, provider=N
     get_logger().info("recall %s 重构候选集(可重放): %s", mode,
                       json.dumps(_candidates(mode, structured), ensure_ascii=False))
     if provider is None:
-        provider = get_chat_provider(cfg.agent)
+        # recall 专用 provider 通道(S6 Phase 2):recall_provider 非空 → 只换 provider 字段,
+        # key 解析/base_url/custom provider 仍全部交给 registry/工厂(单一来源,不复制知识);
+        # 空串 = 跟随全局 agent provider(现状)。episode/concept/opening 共用本解析点。
+        agent_cfg = cfg.agent
+        if agent_cfg.recall_provider:
+            agent_cfg = replace(agent_cfg, provider=agent_cfg.recall_provider)
+        provider = get_chat_provider(agent_cfg)
     res = provider.complete(system, user, model=cfg.agent.recall_model,
                             timeout=cfg.agent.timeout_s)
     return res.text.strip()
