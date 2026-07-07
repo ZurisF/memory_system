@@ -3,9 +3,10 @@
 > 目的:让后续实例快速看清真实状态、下一步、验证方式、高优先风险。
 > - 架构全貌 → **`ARCHITECTURE.md`**(认知正典:分层/接口/铁律/数据流)。
 > - S5 写入侧细节(语义/前端坑/验收门/工程债) → **`S5_NOTES.md`**。
-> - S6 检索层施工书 → `project/s6_build_plan.md`(裁定与参数依据都在里面)。
+> - S6 检索层施工书 → `project/s6_build_plan.md`(裁定与参数依据都在里面);Phase 2 施工书 →
+>   `project/s6_phase2_build.md`(§0 裁定/§6 MCP 化次序),施工日志 → `project/out/s6p2_log.md`。
 > - 概念正典 → `project/idea_v2.md`。
-> 本文件只写「现状 + 交接 + 下一步」,刻意保持清爽。最近整理:2026-07-03(补 S6 交接)。
+> 本文件只写「现状 + 交接 + 下一步」,刻意保持清爽。最近整理:2026-07-07(S6 Phase 2 完工收口)。
 
 ## 当前状态
 
@@ -43,7 +44,8 @@
 - **S6 检索层 Phase 1 完工**(2026-07-02,commit `57f2838`):三路检索 + 重构 agent + 惰性衰减 +
   开场注入 + 评测夹具,详见下节。`verify_s6.py` 33 断言全绿,s1–s5 及 web/view/provider 全套回归绿。
 - **控制台补充**(2026-07-02,commit `47430d6`):`/api/agent/config` 增 **recall 角色**(仅 model,
-  写 `MEMORY_AGENT_RECALL_MODEL`;**无专用 provider 通道**,前端如实呈现);新建 `prompt_store.py` +
+  写 `MEMORY_AGENT_RECALL_MODEL`;当时**无专用 provider 通道**——Phase 2 已补,见下方
+  2026-07-07 条);新建 `prompt_store.py` +
   `GET/POST /api/prompts` —— 三过程五个 system prompt(chunk/extract/recall_episode/recall_concept/
   opening)控制台在线编辑,五键白名单文件名写死(堵路径穿越)、content 非空校验、tmp+`os.replace`
   原子写、写后清 chunk/extract 的 `lru_cache` 即时生效(重构每次现读无缓存)。门:`verify_web_api`
@@ -61,6 +63,14 @@
   touch 默认 false;ChatError 折成 200+error 降级。门:verify_web_api 加 recall 7 道。
   另修 verify_web_api 一处老 flaky(staging 编辑门押 `episodes[0]`,顺序随并发提取完成序漂移,
   改按 stage_id 找)。运行手册 `eval/README.md`;全套 verify + 三个 selftest 全绿。
+- **S6 检索层 Phase 2 完工**(2026-07-07,四 commit:P2-1 `bef426c` / P2-2 `da75117` /
+  P2-3 `bceeb3f` / P2-4 `eeef776`):Phase 1 四项留口全部落地,逐项实况见下节「Phase 2 留口」,
+  每工单文件清单/关键决定/偏离见 `project/out/s6p2_log.md`(P2-4 曾因沙箱产物丢失重做一次,
+  日志里有订正节)。全量回归 verify_s1–s6 + verify_provider_config + verify_web_api 全绿。
+  新增旋钮(全走 env,坏值回落默认):`MEMORY_RECALL_DEDUP_SESSION` /
+  `MEMORY_RECALL_COOLDOWN_HOURS` / `MEMORY_RECALL_COOLDOWN_FACTOR` /
+  `MEMORY_RECALL_OPENING_SPARK` / `MEMORY_RECALL_OPENING_SPARK_TEMP`、
+  `MEMORY_AGENT_RECALL_PROVIDER`(空串=跟随全局)。
 - 前端仍是零构建原生静态资源,各 JS 模块职责单一,可单独改。
 
 ## S6 检索层 Phase 1(已完工,2026-07-02)
@@ -81,8 +91,9 @@
 
 配套:
 - **配置**:`RecallConfig`(半衰期/topk/RRF k/衰减权重/槽位宽度/开窗宽度/开场预算,全走
-  `MEMORY_RECALL_*` 覆盖,坏值回落默认不炸检索);`AgentConfig.recall_model` 默认 sonnet
-  (候选集已定死、重构只做表达,检索路径求快省)。
+  `MEMORY_RECALL_*` 覆盖,坏值回落默认不炸检索;Phase 2 追加去重/冷却/火花五旋钮,见下节);
+  `AgentConfig.recall_model` 默认 sonnet(候选集已定死、重构只做表达,检索路径求快省),
+  Phase 2 追加 `recall_provider`(空串=跟随全局)。
 - **逃生口**:`--json` = §5 结构化契约(机器可读,不调 LLM);`--raw` = 人类可读结构化渲染(调试)。
 - **评测夹具**:`eval/queries.jsonl`(zuris 随真实记忆积累手工添加)+ `scripts/eval_recall.py`
   (hit@k、`--param` A/B 对比、`touch=False` 只读不污染时钟)。
@@ -91,19 +102,38 @@
 - SessionStart hook 只读 `opening_cache/global.md`(毫秒级),**hook 接线在仓库外**,施工到
   `opening show` 为止。
 
-**Phase 2 留口(代码注释里都有标记)**:
-- episode 检索的 **session 去重 / 跨 session 冷却**(`injected_log`/`cooldown_log`,episode.py ③ 处)。
-- **召回时的别名露出(grep 锚定)**(2026-06-27 与 zuris 商定方向,Phase 1 只做了 concept 入口的
-  `alias_bridge`):召回 episode 时拿所挂 node 的别名 grep 其 `source_text`,**仅当别名字面出现而规范
-  label 没出现**才附桥接行(`文中"弥赛亚" = 概念 AGI`)——防特异私人别名被重构 agent 误读;
-  显然别名不必管。复用现成 grep 基建,活在召回器里。
-- 开场**槽 C(温度采样火花)**——选材结构里位置留好,Phase 1 空着不建。
-- 控制台 recall **专用 provider 通道**(现在 recall 只可换 model,provider 跟全局)。
-- 性能标记:联想槽与 concept 的 context 排序用应用层 Python 算 L2(`_l2`),库大了要下沉 SQL/vec0。
+**Phase 2 留口 → 已全部完成(2026-07-07)**(施工书 `project/s6_phase2_build.md`,细节
+`project/out/s6p2_log.md`):
+- episode 检索的 **session 去重 / 跨 session 冷却** — 已完成。新表 `injected_log`(m004,存
+  public_id 不存整数 id,**rebuild 不清**)记录三槽注入;同 session 已注入的从三槽候选**硬排除**,
+  其他 session 在 `cooldown_hours` 窗口内注入过的 final 分乘 `cooldown_factor`(默认 0.8,软降序
+  不排除)。仅作用 episode;**无 session_key = 全关**(CLI 默认不带,行为同 Phase 1,零日志),
+  `touch=False`(eval)不写日志。CLI `recall episode --session KEY`。
+- **召回时的别名露出(grep 锚定)** — 已完成。三槽每条 episode:所挂 node 的 alias 字面出现于
+  库内 source_text 且规范 label 未出现 → 附 `alias_bridges`(「文中「弥赛亚」= 概念 AGI」,
+  无桥接省略该键);随槽位进重构输入,prompt 教 agent 当词义锚点。concept 入口的
+  `alias_bridge`(入口解析)不动,两者语义不同。
+- 开场**槽 C(温度采样火花)** — 已完成。槽位扩为 latest/ballast/spark,权重
+  `w = salience_tier×(1−activation)+0.05`(重要且沉睡),`p ∝ w^(1/T)` 温度采样;
+  `opening_spark=0` 回 Phase 1;`opening_max_items` 硬顶不变,spark 开启保留 1 席;
+  **全程不刷时钟**;verify 注入固定 seed,生产走系统熵。
+- 控制台 recall **专用 provider 通道** — 已完成(后端+前端)。`AgentConfig.recall_provider`
+  空串=跟随全局;**单一解析点在 `reconstruct.run()`**(episode/concept/opening 共用,一处接线);
+  `/api/agent/config` recall 节 GET 如实回 override 原值、POST 以 `"provider" in body` 区分
+  「未传」与「传空串清 override」;console.js recall 卡 provider 下拉(首项「跟随全局」),
+  连接测试复用既有通道;删 custom provider 连带清悬空 recall_provider。门:
+  `verify_provider_config` 新四段。
+- 性能标记(**仍留**,刻意延后):联想槽与 concept 的 context 排序用应用层 Python 算 L2(`_l2`),
+  库大了要下沉 SQL/vec0。
 
-**下一步候选**(未定,问 zuris):① S6 Phase 2(上面留口);② 概念图(nodes 膜)编辑——给 episode
-增删 node;③ 孤儿 episode 可见化/重指派(删 node 后 0 挂载,galaxy 看不见但仍在库);
-④ SessionStart hook 真接线(仓库外)。
+**下一步 = MCP 化**(施工书 `project/recall_tools_plan.md`;次序:Phase A 喂库/达标门 →
+Phase B MCP server,B 的注册上线以 A 的达标门为前提)。`s6_phase2_build.md §6` 记的增量:
+① 三个 tool 描述文案(选路 prompt)进控制台在线编辑(`prompts/tool_*_desc.txt` 三新文件 +
+`prompt_store` 白名单 +3;已知边界:MCP 客户端按连接缓存 tools/list,编辑后下一次会话生效);
+② MCP server 每连接(initialize)生成 session_key,tools/call episode 路透传——P2-1 机制的
+第一个真实消费方,`injected_log.tool` 届时填真实 tool 名。
+其余候选(未定,问 zuris):概念图(nodes 膜)编辑——给 episode 增删 node;孤儿 episode
+可见化/重指派(删 node 后 0 挂载,galaxy 看不见但仍在库);SessionStart hook 真接线(仓库外)。
 
 ## 高优先风险
 
@@ -145,6 +175,8 @@ hit@k,`--param KEY=V` 做 A/B,全程 `touch=False` 只读)。
 - `S5_NOTES.md` — S5 写入侧语义、前端坑、验收门 + 2026-06-25 工程债与 registry 重构记录。
 - `project/s6_build_plan.md` — S6 施工书(裁定/参数/契约正本,S6 代码照它施工)。
   `project/s6_retrieval_design.md` 是它的前身探讨稿,冲突处以施工书为准。
+- `project/s6_phase2_build.md` — S6 Phase 2 施工书(已完工勾账);施工日志
+  `project/out/s6p2_log.md`(注意 P2-4 旧节有「产物未落盘」订正,以重做节为准)。
 - `README.md` — 与当前代码接近。
 - `project/idea_v2.md` — 概念正典。
 - `project/frontend_plan.md` — 前端施工书,§7 API 契约、§8 数据对象形状。
