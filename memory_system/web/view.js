@@ -11,7 +11,7 @@
  */
 (function () {
 
-/* ═══════════ 三视图导航(显隐冻结) ═══════════ */
+/* ═══════════ 四视图导航(显隐冻结) ═══════════ */
 
 var VIEWS = { ingest: "view-ingest", graph: "view-graph", recall: "view-recall", console: "view-console" };
 var curView = "ingest";

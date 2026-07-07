@@ -298,7 +298,7 @@
   .ep-editor .acts button.danger { border-color:var(--err); color:var(--err); }
   .ep-editor .acts button:disabled { opacity:.5; cursor:default; }
 
-  /* ── 三视图导航 ── */
+  /* ── 四视图导航 ── */
   #topnav { flex:none; display:flex; gap:4px; align-items:center; padding:6px 14px;
          border-bottom:1px solid var(--line); background:#15161a; }
   #topnav .brand { font-size:12px; color:var(--muted); font-weight:600;

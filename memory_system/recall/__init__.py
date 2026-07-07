@@ -1,9 +1,9 @@
 """S6 检索层入口。
 
-Phase 1 三路检索:细节(FTS grep)/ 情景(向量+FTS→RRF)/ 概念(膜 join),已齐。
-重构封装在子模块 reconstruct(`from memory_system.recall import reconstruct` 后调 run)。
-开场注入(S6-6 opening)由后续步骤补入,补入时在此追加导出——
-__init__ 只导出已存在的东西,不放占位实现。
+三路检索:细节(FTS grep)/ 情景(向量+FTS→RRF)/ 概念(膜 join)。
+重构封装在子模块 reconstruct(`from memory_system.recall import reconstruct` 后调 run);
+开场注入封装在子模块 opening(`from memory_system.recall import opening`)。
+__init__ 只导出三路函数,子模块按需导入。
 """
 
 from __future__ import annotations
