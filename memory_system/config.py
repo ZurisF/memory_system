@@ -122,6 +122,9 @@ class RecallConfig:
     dedup_session: bool = True     # session_key 存在时是否硬去重(总开关)
     cooldown_hours: float = 24.0   # 跨 session 冷却窗口;<=0 关闭
     cooldown_factor: float = 0.8   # 冷却乘子;1.0 关闭
+    # S6 Phase 2:开场槽 C(温度采样火花)。0 关闭 = 回归 Phase 1 行为。
+    opening_spark: int = 1         # 槽 C 火花条数;0 关闭
+    opening_spark_temp: float = 1.0  # 温度 T:p ∝ w^(1/T);T→0 贪心、T 大趋均匀
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -144,6 +147,17 @@ def _env_float(name: str, default: float) -> float:
         return default
     try:
         return float(raw)
+    except ValueError:
+        return default
+
+
+def _env_int(name: str, default: int) -> int:
+    # 环境变量解析整数;缺省或坏值回落默认(照 _env_bool/_env_float 惯例)。
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
     except ValueError:
         return default
 
@@ -179,6 +193,9 @@ def _recall_from_env() -> RecallConfig:
         dedup_session=_env_bool("MEMORY_RECALL_DEDUP_SESSION", d.dedup_session),
         cooldown_hours=_env_float("MEMORY_RECALL_COOLDOWN_HOURS", d.cooldown_hours),
         cooldown_factor=_env_float("MEMORY_RECALL_COOLDOWN_FACTOR", d.cooldown_factor),
+        opening_spark=_env_int("MEMORY_RECALL_OPENING_SPARK", d.opening_spark),
+        opening_spark_temp=_env_float(
+            "MEMORY_RECALL_OPENING_SPARK_TEMP", d.opening_spark_temp),
     )
 
 

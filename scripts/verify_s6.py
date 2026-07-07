@@ -24,6 +24,9 @@
 - P2-2:别名露出桥接(仅别名出现→桥接在、别名+label 都出现→无、别名不出现→无)、
         同源/联想槽条目同样出桥接、判据取库内 source_text(槽输出不带原文)、
         重构 user 消息逐条含桥接行、红线不破。
+- P2-3:开场槽 C 火花(固定 seed 选择确定、槽 A/B/C 不重复、opening_max_items 硬顶)、
+        opening_spark=0 回归 Phase 1(槽 C 空、槽 B 至多 2 条)、仅 1 条 active 时槽 C 空着不崩、
+        选材/rebuild 前后全库 last_accessed_at 无变化且 spark 进入重构输入。
 
 跑法:.venv/bin/python scripts/verify_s6.py
 (评测夹具 eval/queries.jsonl + scripts/eval_recall.py 对真实库跑,不进本回归。)
@@ -518,7 +521,7 @@ def seg_s6_6() -> None:
         con.close()
     assert newest == "ep_kkkk0011", newest
 
-    # (1) 选材:槽 A=最新条;槽 B tier>=2、去重槽 A;硬顶 opening_max_items;spark(槽 C)不建
+    # (1) 选材:槽 A=最新条;槽 B tier>=2、去重槽 A;硬顶 opening_max_items;槽 C 可为空或有火花
     material = opening.select_opening(CFG, now=NOW)
     latest, ballast = material["slots"]["latest"], material["slots"]["ballast"]
     assert material["mode"] == "opening"
@@ -839,6 +842,115 @@ def seg_s6_p2_2() -> None:
     ok("重构输入:桥接行随槽位逐条进 user 消息")
 
 
+# ============ P2-3:开场槽 C(温度采样火花)============
+def seg_s6_p2_3() -> None:
+    import json
+    import random
+    import tempfile
+    from dataclasses import replace
+    from pathlib import Path
+
+    from memory_system.agent.fake import FakeChatProvider
+    from memory_system.recall import opening
+
+    def _cfg(name: str, **recall_overrides):
+        home = Path(tempfile.mkdtemp(prefix=f"memsys_s6_p23_{name}_"))
+        rc = replace(CFG.recall, **recall_overrides)
+        cfg = replace(CFG, home=home, recall=rc)
+        for d in cfg.all_dirs():
+            d.mkdir(parents=True, exist_ok=True)
+        return cfg
+
+    def mk(pid: str, created: str, *, tier: int, ov: str | None = None) -> Episode:
+        return Episode(public_id=pid, overview=ov or f"{pid} overview",
+                       summary=f"{pid} 摘要", source_text=f"{pid} 原文",
+                       salience_tier=tier, status="active", created_at=created,
+                       activated_at=created, highlights=[])
+
+    def _write_rebuild(cfg, eps: list[Episode]) -> None:
+        for ep in eps:
+            write_episode(cfg.episodes_dir, ep)
+        rep = rebuild(cfg, FakeProvider(model="fake", dim=16))
+        assert rep.episodes == len(eps) and rep.vectors == len(eps), rep
+
+    def _slot_ids(material: dict, slot: str) -> list[str]:
+        return [e["public_id"] for e in material["slots"][slot]]
+
+    def _all_slot_ids(material: dict) -> list[str]:
+        return (_slot_ids(material, "latest") + _slot_ids(material, "ballast")
+                + _slot_ids(material, "spark"))
+
+    def _clocks(cfg) -> dict[str, str | None]:
+        con = connect(cfg.db_path)
+        try:
+            return {pid: lac for (pid, lac) in con.execute(
+                "SELECT public_id, last_accessed_at FROM episodes ORDER BY public_id")}
+        finally:
+            con.close()
+
+    eps = [
+        mk("ep_p230001", "2026-01-01T09:00:00+00:00", tier=3,
+           ov="火花候选一:重要但沉睡"),
+        mk("ep_p230002", "2026-02-01T09:00:00+00:00", tier=2,
+           ov="火花候选二:旧但还有重量"),
+        mk("ep_p230003", "2026-07-01T09:00:00+00:00", tier=3,
+           ov="压舱候选:最近且高 tier"),
+        mk("ep_p230004", "2026-06-15T09:00:00+00:00", tier=2,
+           ov="压舱候选二"),
+        mk("ep_p230005", "2026-07-03T09:00:00+00:00", tier=1,
+           ov="最新条:槽 A"),
+    ]
+
+    cfg = _cfg("main", opening_max_items=4, opening_spark=2, opening_spark_temp=1.0)
+    _write_rebuild(cfg, eps)
+
+    # (1) 固定 seed:选择确定;槽 A/B/C 不重复;opening_max_items 硬顶不被 spark 撑破。
+    m1 = opening.select_opening(cfg, now=NOW, rng=random.Random(20260707))
+    m2 = opening.select_opening(cfg, now=NOW, rng=random.Random(20260707))
+    assert m1 == m2, json.dumps([m1, m2], ensure_ascii=False, indent=2)
+    latest, ballast, spark = (_slot_ids(m1, "latest"), _slot_ids(m1, "ballast"),
+                              _slot_ids(m1, "spark"))
+    assert latest == ["ep_p230005"], latest
+    assert spark, "构造语料下应采到至少 1 条 spark"
+    assert len(_all_slot_ids(m1)) <= cfg.recall.opening_max_items, _all_slot_ids(m1)
+    assert len(_all_slot_ids(m1)) == len(set(_all_slot_ids(m1))), _all_slot_ids(m1)
+    assert set(spark).isdisjoint(set(latest + ballast)), m1["slots"]
+    ok("P2-3 固定 seed:开场槽 C 选择确定,且槽 A/B/C 不重复、总条数受 opening_max_items 硬顶")
+
+    # (2) opening_spark=0:槽 C 空,槽 B 回到 Phase 1 的至多 2 条压舱预算。
+    cfg_off = replace(cfg, recall=replace(cfg.recall, opening_max_items=3, opening_spark=0))
+    off = opening.select_opening(cfg_off, now=NOW, rng=random.Random(1))
+    assert _slot_ids(off, "spark") == [], off["slots"]
+    assert len(_slot_ids(off, "ballast")) == 2, off["slots"]
+    assert len(_all_slot_ids(off)) <= cfg_off.recall.opening_max_items, off["slots"]
+    ok("P2-3 旋钮:opening_spark=0 → 槽 C 空,槽 B 恢复 Phase 1 的至多 2 条")
+
+    # (3) 仅 1 条 active:必入槽 A,槽 C 空着,函数不崩。
+    cfg_one = _cfg("one", opening_max_items=3, opening_spark=1)
+    _write_rebuild(cfg_one, [mk("ep_p231001", "2026-07-03T09:00:00+00:00", tier=3)])
+    one = opening.select_opening(cfg_one, now=NOW, rng=random.Random(2))
+    assert _slot_ids(one, "latest") == ["ep_p231001"], one["slots"]
+    assert _slot_ids(one, "ballast") == [] and _slot_ids(one, "spark") == [], one["slots"]
+    ok("P2-3 边界:仅 1 条 active 时槽 A 正常、槽 C 空着不崩")
+
+    # (4) 选材 + rebuild 是窥视:全库 last_accessed_at 不变;spark JSON 进入重构 user 输入。
+    before = _clocks(cfg)
+    seen: dict = {}
+
+    def _cap(system: str, user: str, model: str) -> str:
+        seen["user"] = user
+        return "P2-3 开场火花已进入重构。"
+
+    opening.mark_dirty(cfg)
+    rebuilt = opening.rebuild_opening(cfg, provider=FakeChatProvider(behaviors=[_cap]), now=NOW)
+    after = _clocks(cfg)
+    assert rebuilt == "P2-3 开场火花已进入重构。", rebuilt
+    assert after == before, "开场选材/rebuild 是窥视,不该刷新任何 episode last_accessed_at"
+    assert '"spark"' in seen["user"], seen["user"]
+    assert any(pid in seen["user"] for pid in spark), seen["user"]
+    ok("P2-3 窥视 + 下游:选材/rebuild 前后全库时钟不变,spark 槽进入重构 user JSON")
+
+
 def main() -> None:
     build_corpus()
     seg_s6_1()
@@ -849,6 +961,7 @@ def main() -> None:
     seg_s6_6()
     seg_s6_p2_1()
     seg_s6_p2_2()
+    seg_s6_p2_3()
     print("S6 检索层 ALL PASS ✅")
 
 

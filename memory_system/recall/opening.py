@@ -4,7 +4,12 @@ s6_build_plan §4 S6-6 的要点:
 - **选材是填槽不是排序**:
   槽 A(latest)= created_at 最新的 1 条 active(接上"上次聊到");
   槽 B(ballast)= salience_tier >= 2 中 effective_activation 最高的 1–2 条(压舱),
-  去掉与槽 A 重复的;槽 C(温度采样火花)Phase 1 空着不建。硬顶 `opening_max_items` 条。
+  去掉与槽 A 重复的;槽 C(spark 火花)= 全部 active 减 A/B 后温度采样(Phase 2)。
+  硬顶 `opening_max_items` 条:spark 开启时先给槽 C 保留席位,槽 B 取剩余预算;
+  `opening_spark=0` 完全回归 Phase 1(槽 C 空着)。
+- **槽 C 权重 = 重要且沉睡**(§0.7):`w = salience_tier ×(1 − activation)+ 0.05`;
+  温度采样 `p ∝ w^(1/T)`(T→0 贪心、T 大趋均匀),不放回采 `opening_spark` 条。
+  随机性是特性(serendipity),函数收 `rng` 形参供 verify 注入固定 seed;生产路径用系统熵。
 - **只读窥视:选材全程不刷新任何时钟**(§6.3 裁定:开场注入是窥视不是回忆,
   刷新规则四条里它是"全不刷"的那条)。本模块对 DB 只 SELECT,绝无 touch/UPDATE。
 - 重构复用 reconstruct.run(mode="opening",prompt 在 prompts/opening_system.txt),
@@ -99,14 +104,61 @@ def _item(row, *, activation: float | None = None) -> dict:
     return out
 
 
-def select_opening(cfg: Config, *, now: datetime | None = None) -> dict:
-    """选材:槽 A(latest)+ 槽 B(ballast),槽 C Phase 1 空着。**全程只 SELECT,不刷时钟**。
+def _spark_weight(activation: float, tier: int) -> float:
+    """槽 C 采样权重:重要且沉睡(§0.7)= salience_tier ×(1 − activation)+ 0.05。
+    +0.05 保证任何候选都有正权重(不会被彻底剪除),恒 > 0。"""
+    return tier * (1.0 - activation) + 0.05
+
+
+def _sample_spark(cands: list, weights: list, k: int, temp: float, rng) -> list:
+    """按 `p ∝ w^(1/T)` 不放回采 k 条,返回选中行(采样顺序)。
+
+    - `temp <= 0`:退化为贪心(温度趋 0 的极限),按权重降序、public_id 破平,完全确定;
+    - 否则先对 `w / w_max` 取 `1/T` 次幂(归一化防溢出,常数因子不改相对概率),再轮盘赌。
+    cands 须已按 public_id 稳定排序 —— 同 seed 同库必得同一结果(verify 断言确定性)。
+    """
+    pool = list(zip(cands, weights))
+    k = min(k, len(pool))
+    if k <= 0:
+        return []
+    if temp <= 0:  # 贪心极限:直接按权重降序取,不消耗 rng
+        pool.sort(key=lambda t: (-t[1], t[0]["public_id"]))
+        return [row for row, _ in pool[:k]]
+    wmax = max(w for _, w in pool) or 1.0
+    pw = [(w / wmax) ** (1.0 / temp) for _, w in pool]
+    idxs = list(range(len(pool)))
+    chosen: list = []
+    for _ in range(k):
+        total = sum(pw[i] for i in idxs)
+        if total <= 0:  # 防御:全零权重(理论不达)→ 均匀挑
+            pick = rng.randrange(len(idxs))
+        else:
+            r = rng.random() * total
+            acc = 0.0
+            pick = len(idxs) - 1
+            for j, i in enumerate(idxs):
+                acc += pw[i]
+                if r <= acc:
+                    pick = j
+                    break
+        chosen.append(pool[idxs[pick]][0])
+        idxs.pop(pick)
+    return chosen
+
+
+def select_opening(cfg: Config, *, now: datetime | None = None, rng=None) -> dict:
+    """选材:槽 A(latest)+ 槽 B(ballast)+ 槽 C(spark 火花)。**全程只 SELECT,不刷时钟**。
 
     返回结构化 dict(喂重构,槽位即候选集,可日志可重放):
-    {"mode": "opening", "token_budget": N, "slots": {"latest": [...], "ballast": [...]}}
+    {"mode": "opening", "token_budget": N,
+     "slots": {"latest": [...], "ballast": [...], "spark": [...]}}
+    `rng`(None → random.Random())供 verify 注入固定 seed;生产路径用系统熵。
     """
     rc = cfg.recall
     now = now or datetime.now(timezone.utc)
+    if rng is None:
+        import random  # 轻依赖,函数内 import(仅默认构造用;签名注解已 future-stringify)
+        rng = random.Random()
     con = connect(cfg.db_path)
     try:
         migrate.up(con)  # 防御:检索前确保 schema 就位(与其余 recall 模块一致)
@@ -117,26 +169,52 @@ def select_opening(cfg: Config, *, now: datetime | None = None) -> dict:
     finally:
         con.close()
 
-    slots: dict = {"latest": [], "ballast": []}
+    slots: dict = {"latest": [], "ballast": [], "spark": []}
     out = {"mode": "opening", "token_budget": rc.opening_token_budget, "slots": slots}
     if not rows or rc.opening_max_items < 1:
         return out
 
+    def _act(r) -> float:
+        return decay.effective_activation(
+            r["last_accessed_at"], r["salience_tier"], rc, now,
+            activated_at=r["activated_at"], created_at=r["created_at"])
+
     # 槽 A:created_at 最新的 1 条(同刻并列按 public_id 定序,保证可重放)
     latest = max(rows, key=lambda r: (r["created_at"], r["public_id"]))
     slots["latest"].append(_item(latest))
+    taken = {latest["public_id"]}
 
-    # 槽 B:tier >= 2 中活跃度最高的 1–2 条,去掉与槽 A 重复的;硬顶 opening_max_items
-    ballast_n = min(2, rc.opening_max_items - len(slots["latest"]))
+    # 槽位预算(§0.9):硬顶 opening_max_items 不变;spark 开启先给槽 C 保留席位,槽 B 取剩余。
+    remaining = rc.opening_max_items - len(slots["latest"])
+    spark_reserved = min(max(rc.opening_spark, 0), remaining)
+    ballast_n = min(2, remaining - spark_reserved)
+
+    # 槽 B:tier >= 2 中活跃度最高的 1–2 条,去掉与槽 A 重复的
     if ballast_n > 0:
         cands = [r for r in rows
-                 if r["salience_tier"] >= 2 and r["public_id"] != latest["public_id"]]
-        act = {r["public_id"]: decay.effective_activation(
-            r["last_accessed_at"], r["salience_tier"], rc, now,
-            activated_at=r["activated_at"], created_at=r["created_at"]) for r in cands}
+                 if r["salience_tier"] >= 2 and r["public_id"] not in taken]
+        act = {r["public_id"]: _act(r) for r in cands}
         cands.sort(key=lambda r: (-act[r["public_id"]], r["public_id"]))
-        slots["ballast"].extend(_item(r, activation=act[r["public_id"]])
-                                for r in cands[:ballast_n])
+        for r in cands[:ballast_n]:
+            slots["ballast"].append(_item(r, activation=act[r["public_id"]]))
+            taken.add(r["public_id"])
+
+    # 槽 C(spark):全部 active − 槽 A/B 已选;权重=重要且沉睡,温度采样不放回。
+    if spark_reserved > 0:
+        sc = sorted((r for r in rows if r["public_id"] not in taken),
+                    key=lambda r: r["public_id"])  # 稳定序 → 同 seed 结果确定
+        if sc:
+            sact = {r["public_id"]: _act(r) for r in sc}
+            sw = [_spark_weight(sact[r["public_id"]], r["salience_tier"]) for r in sc]
+            picks = _sample_spark(sc, sw, spark_reserved, rc.opening_spark_temp, rng)
+            slots["spark"].extend(_item(r, activation=sact[r["public_id"]]) for r in picks)
+            # 可重放日志:槽 C 的 public_id 与其权重(选材侧独立落盘,重放可复现)。
+            wmap = {r["public_id"]: w for r, w in zip(sc, sw)}
+            get_logger().info(
+                "opening 槽 C 火花采样(可重放): temp=%s picks=%s",
+                rc.opening_spark_temp,
+                [{"public_id": p["public_id"], "weight": round(wmap[p["public_id"]], 6)}
+                 for p in picks])
     return out
 
 
