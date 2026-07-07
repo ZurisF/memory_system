@@ -1,0 +1,11 @@
+{"prefix": "mem", "topic": "持久化记忆系统开发(切段/蒸馏/向量检索/概念图)", "n": 20, "neighbor": "与 rag 簇互为近邻:同属“检索/AI 工程”领域,内容要靠近但事实无关"}
+{"prefix": "rag", "topic": "另一个 RAG 问答机器人项目(分块/重排/幻觉治理)", "n": 20, "neighbor": "与 mem 簇互为近邻:同属“检索/AI 工程”领域,内容要靠近但事实无关"}
+{"prefix": "pet", "topic": "桌面宠物应用开发(Tauri/动画/系统托盘)", "n": 15, "neighbor": "与 mem 簇近邻(同为个人技术项目),内容领域靠近但事实无关"}
+{"prefix": "cook", "topic": "下厨实验与翻车记录", "n": 20, "neighbor": "与 diet 簇互为近邻(同属饮食健康领域),内容要靠近但事实无关"}
+{"prefix": "diet", "topic": "饮食调整与体检指标", "n": 15, "neighbor": "与 cook 簇互为近邻(同属饮食健康领域),内容要靠近但事实无关"}
+{"prefix": "scifi", "topic": "科幻小说创作讨论(设定/大纲/人物弧)", "n": 20, "neighbor": "与 trpg 簇互为近邻(同属叙事创作领域),内容要靠近但事实无关"}
+{"prefix": "trpg", "topic": "跑团战役(角色/剧情推进/规则争议)", "n": 20, "neighbor": "与 scifi 簇互为近邻(同属叙事创作领域),内容要靠近但事实无关"}
+{"prefix": "phil", "topic": "存在主义与身份哲学闲聊", "n": 15, "neighbor": "与 ai 簇互为近邻(同属思辨闲聊领域),内容要靠近但事实无关"}
+{"prefix": "ai", "topic": "AI 意识与对齐话题闲聊", "n": 15, "neighbor": "与 phil 簇互为近邻(同属思辨闲聊领域),内容要靠近但事实无关"}
+{"prefix": "trip", "topic": "旅行规划与途中见闻", "n": 15, "neighbor": null}
+{"prefix": "work", "topic": "工作琐事与职场决定", "n": 15, "neighbor": null}

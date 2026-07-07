@@ -1,10 +1,11 @@
 # memory_system 接手笔记
 
-> 目的:让后续实例(**S6 检索层**)快速看清真实状态、下一步、验证方式、高优先风险。
+> 目的:让后续实例快速看清真实状态、下一步、验证方式、高优先风险。
 > - 架构全貌 → **`ARCHITECTURE.md`**(认知正典:分层/接口/铁律/数据流)。
 > - S5 写入侧细节(语义/前端坑/验收门/工程债) → **`S5_NOTES.md`**。
+> - S6 检索层施工书 → `project/s6_build_plan.md`(裁定与参数依据都在里面)。
 > - 概念正典 → `project/idea_v2.md`。
-> 本文件只写「现状 + 交接 + 下一步」,刻意保持清爽。最近整理:2026-06-25。
+> 本文件只写「现状 + 交接 + 下一步」,刻意保持清爽。最近整理:2026-07-03(补 S6 交接)。
 
 ## 当前状态
 
@@ -39,37 +40,80 @@
   `count_lines=False`,`line_count` 从列表 API 退场);rebuild 清空+重灌单事务;前端修一处属性
   逃逸 XSS(段卡 tag `escAttr`)、裸 fetch 全兜底、三处补 `once()`、切换 transcript 后发者胜。
   明细见 `ARCHITECTURE.md §10` 已完成首条。全套 verify 绿。
+- **S6 检索层 Phase 1 完工**(2026-07-02,commit `57f2838`):三路检索 + 重构 agent + 惰性衰减 +
+  开场注入 + 评测夹具,详见下节。`verify_s6.py` 33 断言全绿,s1–s5 及 web/view/provider 全套回归绿。
+- **控制台补充**(2026-07-02,commit `47430d6`):`/api/agent/config` 增 **recall 角色**(仅 model,
+  写 `MEMORY_AGENT_RECALL_MODEL`;**无专用 provider 通道**,前端如实呈现);新建 `prompt_store.py` +
+  `GET/POST /api/prompts` —— 三过程五个 system prompt(chunk/extract/recall_episode/recall_concept/
+  opening)控制台在线编辑,五键白名单文件名写死(堵路径穿越)、content 非空校验、tmp+`os.replace`
+  原子写、写后清 chunk/extract 的 `lru_cache` 即时生效(重构每次现读无缓存)。门:`verify_web_api`
+  加 prompts 四道(含 lru 刷新硬证明)、`verify_provider_config` 加 recall 三道。
+- **召回评测基建完工**(2026-07-05,施工书 `project/eval_build_plan.md`,数据契约/裁定都在那份):
+  ① `scripts/eval_gen.py` —— mimo(小米,OpenAI 兼容,key 走环境变量 `mimo_api_key`,模型 mimo-v2.5)
+  批量生成合成语料与题目:按 `eval/clusters.jsonl` 簇清单分批调用、逐行校验、坏行落 rejects.log、
+  断点续跑;生成 prompt 在 `eval/prompts/`(出题 prompt 结构性看不到 overview,防作弊题)。
+  ② `scripts/eval_ingest.py` —— validate(一次报全)/ prep-queries(出题输入,无 overview 泄漏)/
+  ingest(临时 id→ep_syn####、时间戳均匀铺过去 365 天、rebuild、改写夹具、落 manifest)/
+  reset(碎片**移入** backup_<UTC>/ 再重建空库,绝不删)。评测期直接用真库,用 reset 清。
+  ③ `scripts/eval_recall.py` 升级 —— 负例(expect=[])独立指标(误召回均值/干净占比)、按 mode×type
+  分组小结、MRR(miss 计 0)、`--verbose` miss 明细、`--out` JSON 留档(含 RecallConfig 快照)。
+  ④ `POST /api/recall` + 前端第四视图「召回」屏(`web/recall.js`):左结构化槽位卡片、右一键重构,
+  touch 默认 false;ChatError 折成 200+error 降级。门:verify_web_api 加 recall 7 道。
+  另修 verify_web_api 一处老 flaky(staging 编辑门押 `episodes[0]`,顺序随并发提取完成序漂移,
+  改按 stage_id 找)。运行手册 `eval/README.md`;全套 verify + 三个 selftest 全绿。
 - 前端仍是零构建原生静态资源,各 JS 模块职责单一,可单独改。
 
-## 下一步:S6 检索层
+## S6 检索层 Phase 1(已完工,2026-07-02)
 
-> **设计空间与待决清单见 `project/s6_retrieval_design.md`**(2026-06-27 起草,标了 已定/提案/开放/铁律,
-> 供广泛征询)。本节只留底座速查与待厘清纲要,展开在那份文档。
+> 施工书 `project/s6_build_plan.md` 八步全做完;裁定(时钟规则/槽位/确定性边界)与参数依据都在那份文档,
+> 本节只留地图。设计探讨的历史稿是 `project/s6_retrieval_design.md`(已被施工书吸收,按施工书为准)。
 
-S6 做的是「查询 → 召回 → 排序 → 注入回 Claude Code」。**底座已就位,不用从零起**:
+代码全在 `memory_system/recall/`,CLI 入口 `recall {detail,episode,concept}` + `opening {rebuild,show}`:
 
-| 能力 | 现成的东西 | 位置 |
+| 模块 | 做什么 | 关键裁定 |
 |---|---|---|
-| 向量召回 | `episode_vectors`(vec0 `FLOAT[dim]`)+ embedding provider 工厂 + meta 锁校验 | `db/migrations/m002`、`embedding.get_provider`、`index.assert_embeddable` |
-| 全文召回 | `episode_fts`(FTS5 trigram,触发器自动同步 source_text) | `m002` |
-| 概念图扩展 | `episode_nodes` 膜(FK CASCADE)+ node 共现边(现算) | `views.py` |
-| 只读读层 | `list_memories` / `read_memory` / `read_node_detail`(已剥 uuid/向量) | `views.py` |
+| `detail.py` | FTS grep + snippet 开窗(`--raw` 逐字原文,`--since/--until`) | 无 embedding/LLM/衰减;命中刷时钟 |
+| `episode.py` | 向量+FTS 双路 → RRF(只用名次)→ active 硬过滤 → 衰减乘子 → 三槽(主/同源/联想) | 只刷 top-1+同源;联想不刷(被联想≠被回忆) |
+| `concept.py` | label→alias 精确解析(miss 给子串建议)→ 膜 join **全量**取 active(这是「取」不是「搜」) | 不取 source_text;只刷 node 时钟;经 alias 进来带 `alias_bridge` 桥接行 |
+| `decay.py` | 惰性衰减:活跃度现算 `0.5^(天/半衰期)`,半衰期按 tier 14/90/365 天 | 不落库、不 commit(谁调用谁 commit);改配置全库即时生效 |
+| `reconstruct.py` | 重构 agent:结构化槽位 → 一段自然语言(三部分输入铁律) | **候选集程序定死、调用前写日志可重放**;LLM 只做表达;失败抛 ChatError 由 CLI 降级结构化输出(退出码 3) |
+| `opening.py` | 开场注入:槽 A 最新 1 条 + 槽 B tier≥2 活跃度最高 1–2 条,原子写 `opening_cache/global.md` | **窥视不回忆,全程不刷时钟**;dirty 标记接 confirm/archive/delete/edit 四点,rebuild 只在 dirty 时干活 |
 
-**S6 要自己定的(待厘清)**:
-- 查询入口形态:CLI? HTTP API? Claude Code hook 自动注入?
-- 召回融合:向量 + FTS + 图扩展怎么合并/去重/打分。
-- 排序信号:`salience_tier`(1–3)、新鲜度、衰减时钟 `last_accessed_at`(注意:这是**运行态**,
-  `index rebuild` 会重置为 `activated_at`,非记忆正本——不能当检索质量的唯一依据)。
-- 注入格式与 token 预算。
-- **召回时的别名露出**(2026-06-27 与 zuris 商定方向,待 S6 实现):**别名不全量带**(整池糊上去 = 噪声),
-  改 **grep 锚定**——召回一条 episode 时,拿其所挂 node 的别名去 grep 它的 `source_text`,**只有当某别名
-  字面出现、而规范 label 本身没出现时**,才给重构 agent 附一行桥接(`文中"弥赛亚" = 概念 AGI`)。
-  防的是"弥赛亚=AGI"这类**字面看不出关联的特异私人别名**被重构 agent 误读成无关概念(连 Claude 初读都
-  会误判,正是风险佐证);"记忆库/记忆系统"这类显然别名不必管。位置在 §2 入口(别名精确命中)与
-  §10 重构(禁虚构/防误读)之间,复用现成 grep 基建,活在召回器(或 `read_memory`)里,本轮不写代码。
-- 概念依据看 `project/idea_v2.md` 检索相关章节(召回/激活/衰减)。
+配套:
+- **配置**:`RecallConfig`(半衰期/topk/RRF k/衰减权重/槽位宽度/开窗宽度/开场预算,全走
+  `MEMORY_RECALL_*` 覆盖,坏值回落默认不炸检索);`AgentConfig.recall_model` 默认 sonnet
+  (候选集已定死、重构只做表达,检索路径求快省)。
+- **逃生口**:`--json` = §5 结构化契约(机器可读,不调 LLM);`--raw` = 人类可读结构化渲染(调试)。
+- **评测夹具**:`eval/queries.jsonl`(zuris 随真实记忆积累手工添加)+ `scripts/eval_recall.py`
+  (hit@k、`--param` A/B 对比、`touch=False` 只读不污染时钟)。
+- **红线贯彻**:所有对外输出手工挑字段,只 public_id / node label,无 uuid/向量/DB 整数 id;
+  所有排序带 tie-break(public_id/created_at),同一库同一 query 结果可重放。
+- SessionStart hook 只读 `opening_cache/global.md`(毫秒级),**hook 接线在仓库外**,施工到
+  `opening show` 为止。
 
-## 高优先风险(S6 也要知道)
+**Phase 2 留口(代码注释里都有标记)**:
+- episode 检索的 **session 去重 / 跨 session 冷却**(`injected_log`/`cooldown_log`,episode.py ③ 处)。
+- **召回时的别名露出(grep 锚定)**(2026-06-27 与 zuris 商定方向,Phase 1 只做了 concept 入口的
+  `alias_bridge`):召回 episode 时拿所挂 node 的别名 grep 其 `source_text`,**仅当别名字面出现而规范
+  label 没出现**才附桥接行(`文中"弥赛亚" = 概念 AGI`)——防特异私人别名被重构 agent 误读;
+  显然别名不必管。复用现成 grep 基建,活在召回器里。
+- 开场**槽 C(温度采样火花)**——选材结构里位置留好,Phase 1 空着不建。
+- 控制台 recall **专用 provider 通道**(现在 recall 只可换 model,provider 跟全局)。
+- 性能标记:联想槽与 concept 的 context 排序用应用层 Python 算 L2(`_l2`),库大了要下沉 SQL/vec0。
+
+**下一步候选**(未定,问 zuris):① S6 Phase 2(上面留口);② 概念图(nodes 膜)编辑——给 episode
+增删 node;③ 孤儿 episode 可见化/重指派(删 node 后 0 挂载,galaxy 看不见但仍在库);
+④ SessionStart hook 真接线(仓库外)。
+
+## 高优先风险
+
+- **FTS trigram 最短 3 字**:中文 2 字词索引不到。detail/episode 的 FTS 路对短 query 空手
+  (episode 退化向量单路;detail 空结果时 CLI 提示换长词,不静默)。
+- **recall episode / concept --context 要联网**:查询向量走真 embedding provider(DashScope),
+  且过 meta 锁校验(模型/维度与库内不符**拒检**);离线测试用 fake provider + fake 建的库。
+  重构(默认输出)还要过 chat provider;`--raw/--json` 不调 LLM。
+- **`last_accessed_at` 是运行态**:`index rebuild` 重置为 `activated_at`,衰减时钟会「回春」——
+  这是设计内(时钟非正本),但调参/评测跨 rebuild 时别拿它当稳定信号。
 
 - **自定义 provider base_url 配错** → LLM 调用 HTTP 405。控制台加 provider 时有校验提示(缺 `/v1`、
   常见平台域名误用)但非强制拦截。出问题先查 `~/.memory_system/custom_providers.json` 的 `base_url`。
@@ -90,6 +134,8 @@ S6 做的是「查询 → 召回 → 排序 → 注入回 Claude Code」。**底
 .venv/bin/python scripts/verify_view_api.py
 .venv/bin/python scripts/verify_provider_config.py
 ```
+检索质量评测(非通过门,调参用):`.venv/bin/python scripts/eval_recall.py`(读 `eval/queries.jsonl`,
+hit@k,`--param KEY=V` 做 A/B,全程 `touch=False` 只读)。
 前端语法 + NUL 检查、浏览器烟测:见 `S5_NOTES.md §前端注意 / §验收命令`。
 
 ## 文档可信度
@@ -97,6 +143,8 @@ S6 做的是「查询 → 召回 → 排序 → 注入回 Claude Code」。**底
 可作当前依据:
 - `ARCHITECTURE.md` — 架构认知正典(分层/接口/铁律/数据流/schema/API)。**先读这份。**
 - `S5_NOTES.md` — S5 写入侧语义、前端坑、验收门 + 2026-06-25 工程债与 registry 重构记录。
+- `project/s6_build_plan.md` — S6 施工书(裁定/参数/契约正本,S6 代码照它施工)。
+  `project/s6_retrieval_design.md` 是它的前身探讨稿,冲突处以施工书为准。
 - `README.md` — 与当前代码接近。
 - `project/idea_v2.md` — 概念正典。
 - `project/frontend_plan.md` — 前端施工书,§7 API 契约、§8 数据对象形状。

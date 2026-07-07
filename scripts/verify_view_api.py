@@ -39,6 +39,7 @@ os.environ["MEMORY_EMBED_DIM"] = "16"
 from memory_system.config import load_config  # noqa: E402
 from memory_system.db import migrate  # noqa: E402
 from memory_system.db.connection import connect  # noqa: E402
+from memory_system.fragments import Episode, write_episode  # noqa: E402
 from memory_system.server import make_handler  # noqa: E402
 
 CFG = load_config()
@@ -193,6 +194,16 @@ def main() -> None:
         assert d["status"] == "active" and d["nodes"] == sorted(["切块", "原子性"]), d
         assert "summary" in d and "highlights" in d, d
         ok("/api/memory 返回五件套 + source_text + 膜,无 uuid")
+
+        # 评测 ingest 会生成 ep_syn#### 形态 public_id;详情接口应能读,但仍挡路径穿越。
+        write_episode(CFG.episodes_dir, Episode(
+            public_id="ep_syn0018", overview="合成评测 episode", summary="合成详情",
+            source_text="合成评测详情原文", salience_tier=2, status="active",
+            created_at="2026-07-06T00:00:00+00:00",
+            activated_at="2026-07-06T00:00:00+00:00"))
+        syn = _get(base, "/api/memory?public_id=ep_syn0018")
+        assert syn["public_id"] == "ep_syn0018" and syn["overview"] == "合成评测 episode", syn
+        ok("/api/memory 支持 eval 合成 public_id(ep_syn####)")
 
         # ---- /api/node ----
         nd = _get(base, "/api/node?label=" + quote("原子性"))

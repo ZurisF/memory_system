@@ -33,6 +33,10 @@ const ST = {
   selt: new Set(),       // 待整理选中项 key(session_id,kind,id) kind∈seg|ep
   undo: {},              // 每条 episode 的本地撤销栈:{epKey:[fieldsSnapshot,...]}
   tpreview: new Map(),   // path -> transcript turns 缓存(段预览用,同 path 只抓一次)
+
+  // 块 D:召回屏(recall.js)
+  rcReq: null,           // 最近一次成功查询的参数(mode/query/context/since/until/touch),「重构」原样重发
+  rcStructured: null,    // 最近一次 /api/recall 的 structured(渲染态,便于审计)
 };
 
 const PALETTE = ["#7aa2f7", "#9ece6a", "#e0af68", "#bb9af7", "#f7768e",

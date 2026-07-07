@@ -31,6 +31,9 @@ from memory_system.chunk import load_chunk_prompt  # noqa: E402
 from memory_system.config import load_config  # noqa: E402
 from memory_system.db import migrate  # noqa: E402
 from memory_system.db.connection import connect  # noqa: E402
+from memory_system.embedding.fake import FakeProvider  # noqa: E402
+from memory_system.fragments import Episode, Node, write_episode, write_node  # noqa: E402
+from memory_system.index import rebuild  # noqa: E402
 from memory_system.server import make_handler  # noqa: E402
 
 
@@ -136,7 +139,9 @@ def main() -> None:
         edited = _post(base, "/api/staging/edit",
                        {"session_id": "sess-web", "stage_id": "e1",
                         "fields": {"overview": "session-id 编辑后的 overview"}})
-        assert edited.get("ok") and edited["episodes"][0]["overview"] == "session-id 编辑后的 overview", edited
+        # 按 stage_id 找条目:episodes 顺序随并发提取的完成序漂移([0] 会间歇性押错)
+        e1 = next(e for e in edited["episodes"] if e["stage_id"] == "e1")
+        assert edited.get("ok") and e1["overview"] == "session-id 编辑后的 overview", edited
         ok("/api/staging/edit 支持 session_id,不依赖源 jsonl")
 
         rejected = _post(base, "/api/reject",
@@ -256,5 +261,107 @@ def main() -> None:
     print("Web API staging contract ALL PASS ✅")
 
 
+def verify_recall_api() -> None:
+    """POST /api/recall 门(S6 三路检索 + 可选重构,fake embedding/chat 离线)。
+
+    独立临时 home + 独立 CFG + 独立 httpd 实例:与 main() 的 ingest/staging 语料互不干扰
+    (main() 库里已有 fake embedding 造出的其他 episode,混一个库断言 top-1 会被非语义碰撞污染)。
+    """
+    tmp2 = tempfile.mkdtemp(prefix="memsys_recallapi_")
+    os.environ["MEMORY_SYSTEM_HOME"] = tmp2
+    cfg2 = load_config()
+    for d in cfg2.all_dirs():
+        d.mkdir(parents=True, exist_ok=True)
+    print(f"临时 home(recall): {tmp2}")
+
+    con = connect(cfg2.db_path)
+    try:
+        migrate.up(con)
+    finally:
+        con.close()
+
+    # 造一条 active episode(挂一个 node)+ rebuild(真实 fake 向量/FTS/膜),供三路检索测。
+    ep_r1 = Episode(
+        public_id="ep_rcep0001", overview="召回屏门测试概览", summary="召回屏门测试摘要",
+        source_text="召回屏门测试的原文,包含独有短语『召回门专用短语』。",
+        salience_tier=2, status="active", created_at="2026-06-01T09:00:00+00:00",
+        activated_at="2026-06-01T09:00:00+00:00", nodes=["召回门概念"])
+    write_episode(cfg2.episodes_dir, ep_r1)
+    write_node(cfg2.nodes_dir, Node(label="召回门概念", type="concept",
+                                    created_at="t0", updated_at="t0"))
+    rrep = rebuild(cfg2, FakeProvider(model="fake", dim=16))
+    assert rrep.episodes == 1 and rrep.vectors == 1, rrep
+
+    def _clock(pid: str) -> str | None:
+        c = connect(cfg2.db_path)
+        try:
+            return c.execute(
+                "SELECT last_accessed_at FROM episodes WHERE public_id=?", (pid,)).fetchone()[0]
+        finally:
+            c.close()
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(cfg2))
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+    try:
+        # (1) episode 命中,结构化形状对;touch 默认 false → 不刷时钟
+        before_clock = _clock("ep_rcep0001")
+        rc1 = _post(base, "/api/recall", {"mode": "episode", "query": "召回屏门测试概览"})
+        assert rc1.get("error") is None, rc1
+        prim = rc1["structured"]["slots"]["primary"]
+        assert prim and prim[0]["public_id"] == "ep_rcep0001", rc1
+        assert set(prim[0].keys()) == {"public_id", "overview", "summary", "highlights",
+                                       "source_text", "created_at", "salience_tier", "score"}, prim[0]
+        assert rc1["reconstruction"] is None, rc1
+        assert _clock("ep_rcep0001") == before_clock, "touch 默认 false,不该刷时钟"
+        ok("POST /api/recall episode:结构化命中形状对,touch 默认 false 不刷时钟")
+
+        # (2) reconstruct=true 走 fake chat,返回非空文本(结构化结果照常在)
+        rc2 = _post(base, "/api/recall", {"mode": "episode", "query": "召回屏门测试概览",
+                                          "reconstruct": True})
+        assert rc2.get("error") is None, rc2
+        assert isinstance(rc2.get("reconstruction"), str) and rc2["reconstruction"].strip(), rc2
+        assert rc2["structured"]["slots"]["primary"][0]["public_id"] == "ep_rcep0001", rc2
+        ok("POST /api/recall episode reconstruct=true:fake chat 返回非空文本")
+
+        # (3) detail + reconstruct → 400(细节不接重构)
+        st_d, rc3 = _post_status(base, "/api/recall", {"mode": "detail", "query": "召回门专用短语",
+                                                        "reconstruct": True})
+        assert st_d == 400 and "error" in rc3, (st_d, rc3)
+        ok("POST /api/recall detail+reconstruct=true:400(细节不接重构)")
+
+        # (4) detail 命中(不带 reconstruct),hits 形状对
+        rc4 = _post(base, "/api/recall", {"mode": "detail", "query": "召回门专用短语"})
+        assert rc4["structured"]["hits"] and \
+            rc4["structured"]["hits"][0]["public_id"] == "ep_rcep0001", rc4
+        ok("POST /api/recall detail:命中 hits 形状对")
+
+        # (5) concept miss → 200 + suggestions("你是不是想找")
+        rc5 = _post(base, "/api/recall", {"mode": "concept", "query": "召回门"})
+        assert rc5["structured"]["episodes"] == [] and \
+            "召回门概念" in rc5["structured"]["suggestions"], rc5
+        assert rc5.get("error"), rc5
+        ok("POST /api/recall concept miss:200 + 建议列表透传")
+
+        # (6) concept 命中,挂载 episode 正确
+        rc6 = _post(base, "/api/recall", {"mode": "concept", "query": "召回门概念"})
+        assert [e["public_id"] for e in rc6["structured"]["episodes"]] == ["ep_rcep0001"], rc6
+        ok("POST /api/recall concept:命中挂载 episode")
+
+        # (7) 空 query / 坏 mode → 400
+        st_e, rc7 = _post_status(base, "/api/recall", {"mode": "episode", "query": ""})
+        assert st_e == 400, (st_e, rc7)
+        st_m, rc8 = _post_status(base, "/api/recall", {"mode": "bogus", "query": "x"})
+        assert st_m == 400, (st_m, rc8)
+        ok("POST /api/recall:空 query / 坏 mode 均 400")
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+    print("POST /api/recall 门 ALL PASS ✅")
+
+
 if __name__ == "__main__":
     main()
+    verify_recall_api()

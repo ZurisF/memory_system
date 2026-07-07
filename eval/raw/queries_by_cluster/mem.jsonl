@@ -1,0 +1,58 @@
+{"query": "上次说的切段算法具体是怎么处理长对话的，为什么太长的对话信息会丢失", "mode": "episode", "expect": ["mem-01"], "type": "semantic", "note": "将‘超过3000字’改写为‘太长的对话’，将‘召回率掉到70%以下’改写为‘信息会丢失’，测试语义理解"}
+{"query": "话题边界检测", "mode": "detail", "expect": ["mem-01"], "type": "verbatim", "note": "原文逐字出现的关键技术名词，区分度高"}
+{"query": "会话上下文管理器", "mode": "concept", "expect": ["mem-01", "mem-02", "mem-05"], "type": "concept", "note": "概念名直接出现，且被mem-01、mem-02、mem-05多条记忆共享"}
+{"query": "蒸馏出来的摘要质量参差不齐，特别是长对话，有什么办法保证信息密度", "mode": "episode", "expect": ["mem-02"], "type": "semantic", "note": "将‘长段落’改写为‘长对话’，将‘分层摘要’和‘事实点’整合为‘保证信息密度’的问法"}
+{"query": "局部敏感哈希（LSH）", "mode": "detail", "expect": ["mem-02"], "type": "verbatim", "note": "原文逐字出现的具体算法名称和缩写"}
+{"query": "内存爆了，除了上量化，向量检索在长期记忆场景下对精度有什么特别要求", "mode": "episode", "expect": ["mem-03"], "type": "semantic", "note": "将‘32G内存紧张’概括为‘内存爆了’，将‘精度是底线’改写为‘对精度有什么特别要求’"}
+{"query": "Recall@K", "mode": "detail", "expect": ["mem-03"], "type": "verbatim", "note": "原文逐字出现的核心评估指标名称"}
+{"query": "量化", "mode": "detail", "expect": ["mem-03"], "type": "short", "note": "两字对抗，原文在讨论PQ时出现"}
+{"query": "怎么才能让那些总结出来的事实点自己就带上实体和关系信息，方便后面建图", "mode": "episode", "expect": ["mem-04"], "type": "semantic", "note": "将‘结构化的图谱数据’和‘实体列表和关系三元组’改写为更口语的‘带上实体和关系信息’"}
+{"query": "Oxigraph", "mode": "detail", "expect": ["mem-04"], "type": "verbatim", "note": "原文逐字出现的轻量级图存储工具名"}
+{"query": "实体链接", "mode": "concept", "expect": ["mem-04"], "type": "concept", "note": "概念名直接出现，mem-04专门讨论此概念"}
+{"query": "各个模块都是独立的，怎么把它们串成一个完整的流程，不让系统卡住", "mode": "episode", "expect": ["mem-05"], "type": "semantic", "note": "将‘统一的会话上下文管理器’和‘异步处理’合并为‘串成完整流程’的问法"}
+{"query": "幂等性设计", "mode": "detail", "expect": ["mem-05"], "type": "verbatim", "note": "原文逐字出现的架构设计关键点"}
+{"query": "有没有设计过整个长期记忆系统的整体架构，包括切分、摘要、索引这些环节怎么协作", "mode": "episode", "expect": ["mem-01", "mem-02", "mem-03", "mem-04", "mem-05"], "type": "multi", "note": "问题笼统，覆盖整个系统设计话题，多条记忆从不同侧面回答"}
+{"query": "记忆系统的前端界面通常怎么设计比较好", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，所有对话均聚焦后端算法与架构"}
+{"query": "如果同时有很多用户在用这个记忆系统，后端该怎么处理并发", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，对话未讨论多用户并发场景"}
+{"query": "我们怎么确定记忆条目切分的段落长度？", "mode": "episode", "expect": ["mem-06"], "type": "semantic", "note": "询问切段规则，换说法测试语义检索"}
+{"query": "切段", "mode": "detail", "expect": ["mem-06"], "type": "short", "note": "两字对抗，原文出现“切段”"}
+{"query": "120字的软上限", "mode": "detail", "expect": ["mem-06"], "type": "verbatim", "note": "原文逐字数字组合"}
+{"query": "向量存储我们打算用什么数据库？", "mode": "episode", "expect": ["mem-07"], "type": "semantic", "note": "询问向量存储方案，换词问数据库"}
+{"query": "内存预算控制在 128G 以内", "mode": "detail", "expect": ["mem-07"], "type": "verbatim", "note": "原文逐字具体预算"}
+{"query": "概念图的节点类型应该怎么划分？", "mode": "episode", "expect": ["mem-08"], "type": "semantic", "note": "询问节点类型设计，换说法"}
+{"query": "标签", "mode": "detail", "expect": ["mem-08"], "type": "short", "note": "两字对抗，原文“标签”多次出现"}
+{"query": "LLM蒸馏出来的事实怎么验证可靠性？", "mode": "episode", "expect": ["mem-09"], "type": "semantic", "note": "询问事实校验，换词验证可靠性"}
+{"query": "30天自动衰减", "mode": "detail", "expect": ["mem-09"], "type": "verbatim", "note": "原文逐字衰减规则"}
+{"query": "蒸馏", "mode": "concept", "expect": ["mem-09", "mem-10"], "type": "concept", "note": "概念名，挂该概念的记忆有mem-09和mem-10"}
+{"query": "跨对话的上下文太长怎么处理？", "mode": "episode", "expect": ["mem-10"], "type": "semantic", "note": "询问上下文管理，换说法"}
+{"query": "每30轮", "mode": "detail", "expect": ["mem-10"], "type": "verbatim", "note": "原文逐字触发频率"}
+{"query": "蒸馏过程有哪些相关讨论？", "mode": "episode", "expect": ["mem-09", "mem-10"], "type": "multi", "note": "蒸馏话题多条记忆，覆盖mem-09和mem-10"}
+{"query": "有没有聊过音乐推荐系统的优化？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "健身餐的配餐方案是什么？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "之前觉得切段方式太生硬，有什么更智能的办法吗？", "mode": "episode", "expect": ["mem-11"], "type": "semantic", "note": "改写切段太粗暴为太生硬，话题检测为更智能的办法"}
+{"query": "生成摘要时总丢掉具体数字，怎么确保重要信息不被漏掉？", "mode": "episode", "expect": ["mem-12"], "type": "semantic", "note": "蒸馏丢失关键数字改为摘要丢掉具体数字，提取结构化事实改为确保重要信息不被漏掉"}
+{"query": "测试的时候发现搜索结果不全，怎么把相关片段自动拼起来？", "mode": "episode", "expect": ["mem-15"], "type": "semantic", "note": "切段粒度不匹配改为搜索结果不全，记忆合并改为自动拼起来"}
+{"query": "数据库后期扛不住十万数据，有没有更好的存储方案？", "mode": "episode", "expect": ["mem-16"], "type": "semantic", "note": "性能问题改为扛不住十万数据，推荐Qdrant为更好的存储方案"}
+{"query": "项目名和功能描述混用，概念图里怎么理清关系？", "mode": "episode", "expect": ["mem-17"], "type": "semantic", "note": "持久化记忆系统和长期记忆系统混用改为项目名和功能描述混用，概念图节点区分改为理清关系"}
+{"query": "事实骨架", "mode": "detail", "expect": ["mem-12"], "type": "verbatim", "note": "原文逐字出现'事实骨架'，区分度高"}
+{"query": "overview字段", "mode": "detail", "expect": ["mem-15"], "type": "verbatim", "note": "原文逐字出现'overview字段'，专有名词组合"}
+{"query": "记忆蒸馏", "mode": "concept", "expect": ["mem-12", "mem-15"], "type": "concept", "note": "概念名在mem-12和mem-15的nodes中"}
+{"query": "向量检索", "mode": "concept", "expect": ["mem-15", "mem-16"], "type": "concept", "note": "概念名在mem-15和mem-16的nodes中"}
+{"query": "切段", "mode": "detail", "expect": ["mem-11"], "type": "short", "note": "两字中文词，原文出现"}
+{"query": "轻量", "mode": "detail", "expect": ["mem-16"], "type": "short", "note": "两字中文词，原文出现"}
+{"query": "记忆系统各环节如何优化？", "mode": "episode", "expect": ["mem-11", "mem-12", "mem-15"], "type": "multi", "note": "多条记忆涉及切段、蒸馏、检索的优化"}
+{"query": "最近有聊过图像生成技术吗？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "健身餐的营养搭配怎么计划？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "对话分段老是搞乱话题结构，怎么才能更智能地划分？", "mode": "episode", "expect": ["mem-18"], "type": "semantic", "note": "换说法描述切段问题，不复用原文短语"}
+{"query": "切段", "mode": "concept", "expect": ["mem-18", "mem-13", "mem-20"], "type": "concept", "note": "概念名，所有相关记忆"}
+{"query": "蒸馏摘要信息丢失严重，特别是细节，有什么好办法？", "mode": "episode", "expect": ["mem-19"], "type": "semantic", "note": "改写蒸馏信息丢失问题"}
+{"query": "分层提示", "mode": "detail", "expect": ["mem-19"], "type": "verbatim", "note": "原文逐字出现的术语"}
+{"query": "对话数据切段后，存储格式和时间标记怎么处理比较好？", "mode": "episode", "expect": ["mem-13"], "type": "semantic", "note": "换说法讨论存储和时间戳"}
+{"query": "脚本", "mode": "detail", "expect": ["mem-13"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "口语对话蒸馏时提取不准，规则模板和模型微调怎么做？", "mode": "episode", "expect": ["mem-14"], "type": "semantic", "note": "改写蒸馏实现挑战"}
+{"query": "规则模板", "mode": "detail", "expect": ["mem-14"], "type": "verbatim", "note": "原文逐字出现"}
+{"query": "切段模块效率低，检索慢，概念图乱，怎么整体优化？", "mode": "episode", "expect": ["mem-20"], "type": "semantic", "note": "概括多个问题"}
+{"query": "滑动窗口算法", "mode": "detail", "expect": ["mem-20"], "type": "verbatim", "note": "原文逐字出现"}
+{"query": "你们聊过蒸馏的哪些方面？", "mode": "episode", "expect": ["mem-18", "mem-19", "mem-14", "mem-20"], "type": "multi", "note": "多条记忆涉及蒸馏讨论"}
+{"query": "记忆系统的用户界面应该如何设计？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "部署这个系统需要什么硬件配置？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}

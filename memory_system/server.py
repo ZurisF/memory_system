@@ -22,6 +22,7 @@ API:
   POST /api/staging/delete {path|session_id, stage_id}  干净删除未入库 staging 条目(不留痕)
   POST /api/staging/retry/clear {session_id|path, seg_ids}  关闭/忽略提取失败卡(清 retry 记录)
   POST /api/memory/edit {public_id, fields}  编辑已入库 episode 的正文四件(改 overview 重嵌)
+  POST /api/recall   {mode, query, context?, touch, reconstruct, since?, until?}  三路检索(+可选重构)
   DELETE /api/memory?public_id=...  真删一条 episode(碎片正本 + DB;孤儿 node 保留并回报)
   DELETE /api/node?label=...        真删一个 node(碎片 + DB;并从引用它的 episode 碎片摘除)
 """
@@ -472,6 +473,7 @@ def make_handler(cfg: Config):
                 "/api/reject": self._api_reject,
                 "/api/archive": self._api_archive,
                 "/api/memory/edit": self._api_edit_memory,
+                "/api/recall": self._api_recall,
                 "/api/staging/edit": self._api_staging_edit,
                 "/api/staging/delete": self._api_staging_delete,
                 "/api/staging/retry/clear": self._api_clear_retry,
@@ -841,6 +843,84 @@ def make_handler(cfg: Config):
             self._json({"ok": True, "public_id": rep.public_id,
                         "changed": rep.changed, "reembedded": rep.reembedded,
                         "memory": views.read_memory(cfg, public_id)})
+
+        # ---- 召回屏(S6 三路检索 + 可选重构)----
+        def _api_recall(self, body) -> None:
+            """三路检索。body: {mode, query, context?, touch:false, reconstruct:false, since?, until?}。
+
+            响应恒为 {"structured":…, "reconstruction": 文本|null, "error": 人读消息|null}:
+            - touch 默认 false(召回屏默认只读窥视,勾「刷时钟」才透传 true);
+            - reconstruct=true 且 mode∈{episode,concept} 时调 reconstruct.run;ChatError 不 5xx——
+              结构化结果照常返回,reconstruction=null + error 带人读消息(前端降级展示);
+            - detail 请求 reconstruct 直接 400(细节不接重构,逐字保真是它的输出);
+            - concept miss(NodeMissError)回 200:episodes 空 + suggestions 透传("你是不是想找");
+            - meta 锁拒检 / embedding 不可用等运行期异常折成带人读消息的 200 响应,不裸 500。
+            """
+            from memory_system.agent.base import ChatError
+            from memory_system.embedding.dashscope import EmbeddingError
+            from memory_system.log import setup_logging
+            from memory_system.recall import recall_concept, recall_detail, recall_episode, reconstruct
+            from memory_system.recall.concept import NodeMissError
+
+            mode = str(body.get("mode", "")).strip()
+            if mode not in ("episode", "detail", "concept"):
+                return self._json({"error": "mode 必须是 episode、detail 或 concept"}, 400)
+            query = str(body.get("query", "")).strip()
+            if not query:
+                return self._json({"error": "缺 query"}, 400)
+            touch = bool(body.get("touch", False))
+            want_rec = bool(body.get("reconstruct", False))
+            if want_rec and mode == "detail":
+                return self._json({"error": "细节检索不接重构:开窗/逐字就是它的输出"}, 400)
+
+            def _opt(key: str) -> str | None:
+                s = str(body.get(key) or "").strip()
+                return s or None
+
+            def _degraded(msg: str) -> None:
+                # 运行期检索失败:不裸 500,折成人读消息(前端显降级提示条)。
+                self._json({"structured": None, "reconstruction": None, "error": msg})
+
+            context = _opt("context")
+            try:
+                if mode == "detail":
+                    structured = recall_detail(cfg, query, since=_opt("since"),
+                                               until=_opt("until"), touch=touch)
+                elif mode == "episode":
+                    structured = recall_episode(cfg, query, touch=touch)
+                else:
+                    try:
+                        structured = recall_concept(cfg, query, context=context, touch=touch)
+                    except NodeMissError as e:
+                        # miss 是正常业务结果:200,建议透传给前端("你是不是想找")。
+                        return self._json({
+                            "structured": {"mode": "concept", "node": e.query,
+                                           "alias_bridge": None, "episodes": [],
+                                           "suggestions": e.suggestions},
+                            "reconstruction": None, "error": str(e)})
+            except ValueError as e:  # meta 锁不符等(照 CLI「检索拒绝」语义)
+                return _degraded(f"检索拒绝: {e}")
+            except EmbeddingError as e:
+                return _degraded(f"embedding 不可用: {e}")
+
+            reconstruction = None
+            err = None
+            if want_rec:
+                has_hits = bool(structured["slots"]["primary"]) if mode == "episode" \
+                    else bool(structured["episodes"])
+                if not has_hits:
+                    err = "无命中结果,无可重构"
+                else:
+                    # concept 的当轮 query 拼语境,照 CLI _recall_concept 惯例。
+                    user_query = query if mode == "episode" or not context \
+                        else f"{query}(语境: {context})"
+                    setup_logging(cfg.logs_dir)  # reconstruct 要写候选集日志(召回可重放)
+                    try:
+                        reconstruction = reconstruct.run(cfg, mode, structured, user_query)
+                    except ChatError as e:
+                        err = f"重构失败(结构化结果照常展示): {e}"
+            self._json({"structured": structured, "reconstruction": reconstruction,
+                        "error": err})
 
         def _api_delete_memory(self, public_id: str) -> None:
             """真删一条 episode(碎片正本 + DB 索引/膜/向量/FTS,区别于 archive 软降级)。

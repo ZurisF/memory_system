@@ -1,0 +1,8 @@
+# [rag 组2/4] JSON 不合法: Expecting ',' delimiter: line 1 column 118 (char 117)
+{"query": "Unstructured.io", "mode": "detail", "expect": ["rag-08"], "type": "verbatim", "note": "原文中提到的第三方库名称，有特殊字符"
+# [rag 组2/4] JSON 不合法: Expecting ',' delimiter: line 1 column 111 (char 110)
+{"query": "1024 tokens", "mode": "detail", "expect": ["rag-11"], "type": "verbatim", "note": "原文中给出的具体数字和单位组合"
+# [rag 组2/4] JSON 不合法: Expecting ',' delimiter: line 1 column 139 (char 138)
+{"query": "重排序模型推理慢，每个查询要200ms，怎么优化能快点？", "mode": "episode", "expect": ["rag-12"], "type": "semantic", "note": "复述了rag-12的核心问题，但用更简短口语的方式"
+# [rag 组2/4] JSON 不合法: Expecting ',' delimiter: line 1 column 112 (char 111)
+{"query": "dynamic padding", "mode": "detail", "expect": ["rag-12"], "type": "verbatim", "note": "原文中提到的优化技术术语"

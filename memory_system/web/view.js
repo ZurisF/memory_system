@@ -1,4 +1,4 @@
-/* view.js —— 三视图导航(写入|查看|控制台,切换=显隐不销毁) + 查看侧 galaxy。
+/* view.js —— 视图导航(写入|查看|召回|控制台,切换=显隐不销毁) + 查看侧 galaxy。
  *
  * galaxy 移植自 front_references/browse.html,改两点:
  *   1) 容器内定位(坐标用 canvas.getBoundingClientRect 换算,不用 window/fixed);
@@ -13,7 +13,7 @@
 
 /* ═══════════ 三视图导航(显隐冻结) ═══════════ */
 
-var VIEWS = { ingest: "view-ingest", graph: "view-graph", console: "view-console" };
+var VIEWS = { ingest: "view-ingest", graph: "view-graph", recall: "view-recall", console: "view-console" };
 var curView = "ingest";
 
 function switchView(name) {

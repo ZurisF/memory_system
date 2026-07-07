@@ -20,7 +20,9 @@ from memory_system.db import migrate
 from memory_system.db.connection import connect
 from memory_system.fragments import episode_path, node_path, read_episode, read_node
 
-_PUBLIC_ID_RE = re.compile(r"^ep_[0-9a-f]{8}$")
+# public_id 同时支持线上随机 ID(ep_<8hex>)和评测合成 ID(ep_syn####)。
+# 仍只允许文件名安全字符,防止 /api/memory 被拿来穿越 episodes_dir。
+_PUBLIC_ID_RE = re.compile(r"^ep_[A-Za-z0-9][A-Za-z0-9_-]{0,79}$")
 
 
 def list_memories(cfg: Config, include_archived: bool = False) -> dict:

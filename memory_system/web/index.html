@@ -11,6 +11,7 @@
     <span class="brand">memory_system</span>
     <button class="nav-btn active" data-view="ingest">写入</button>
     <button class="nav-btn" data-view="graph">查看</button>
+    <button class="nav-btn" data-view="recall">召回</button>
     <button class="nav-btn" data-view="console">控制台</button>
   </nav>
 
@@ -118,6 +119,34 @@
     <div id="g-help">滚轮缩放 · 拖拽平移 · 点节点聚焦 · 点条目看详情</div>
   </section>
 
+  <section id="view-recall" class="view" hidden>
+    <div id="rc-bar">
+      <select id="rc-mode" title="检索模式">
+        <option value="episode" selected>情景 episode</option>
+        <option value="detail">细节 detail</option>
+        <option value="concept">概念 concept</option>
+      </select>
+      <input type="text" id="rc-query" placeholder="检索词(回车查询)…">
+      <input type="text" id="rc-context" placeholder="context 语境(可选)" style="display:none">
+      <input type="text" id="rc-since" placeholder="since YYYY-MM-DD" style="display:none">
+      <input type="text" id="rc-until" placeholder="until YYYY-MM-DD" style="display:none">
+      <label id="rc-touch-lbl" title="默认只读窥视,不刷 last_accessed_at;勾选后命中会刷时钟">
+        <input type="checkbox" id="rc-touch"> 刷时钟</label>
+      <button class="primary" id="rc-run">查询</button>
+    </div>
+    <div id="rc-body">
+      <div id="rc-left">
+        <h2>结构化结果</h2>
+        <div id="rc-structured"><div class="rc-hint">选模式、输入检索词,回车或点「查询」。</div></div>
+      </div>
+      <div id="rc-right">
+        <h2>重构 <button id="rc-recon" disabled title="把左侧结构化结果重构成一段自然语言回忆(仅 episode/concept)">重构</button></h2>
+        <div id="rc-recon-err" class="alert warn" style="display:none"></div>
+        <div id="rc-recon-text" class="rc-hint">查询后点「重构」,由 recall agent 生成自然语言回忆(detail 不接重构)。</div>
+      </div>
+    </div>
+  </section>
+
   <section id="view-console" class="view" hidden>
     <div class="console-wrap">
       <div class="pn-head" style="background:transparent;padding-left:0">Agent 配置</div>
@@ -149,5 +178,6 @@
   <script src="/app.js"></script>
   <script src="/view.js"></script>
   <script src="/console.js"></script>
+  <script src="/recall.js"></script>
 </body>
 </html>

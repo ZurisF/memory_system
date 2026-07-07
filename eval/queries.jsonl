@@ -1,13 +1,709 @@
-# eval/queries.jsonl —— 检索评测夹具(S6-8)。由 zuris 随真实记忆积累手工添加。
-# 每行一个 JSON 对象(以 # 开头的注释行与空行会被 eval_recall.py 跳过):
-#   {"query": "...", "mode": "episode|detail|concept", "expect": ["ep_xxxx"], "note": "为什么该命中"}
-# 字段:
-#   query   检索词;concept 模式下是 node 的 label 或别名。
-#   mode    episode(向量+FTS 双路,排名取 primary 主槽)/ detail(FTS grep,取 hits)/
-#           concept(膜 join,取 episodes);可选 "context" 字段仅 concept 用(语境向量排序)。
-#   expect  期望命中的 episode public_id 列表(concept 亦是 episode id)。
-#   note    人读理由,脚本忽略。
-# 真实库当前仅 1 条 episode,以下示例先注释占位;有真实记忆后取消注释、把 id 换成真 public_id:
-# {"query": "曲率引擎的能量需求", "mode": "episode", "expect": ["ep_xxxxxxxx"], "note": "原文直接讨论该主题,双路应命中"}
-# {"query": "蓝莓松饼", "mode": "detail", "expect": ["ep_xxxxxxxx"], "note": "逐字原文含该词,FTS grep 直查"}
-# {"query": "荒诞主义", "mode": "concept", "expect": ["ep_xxxxxxxx"], "note": "该 node 下挂载的情景"}
+# eval_ingest 生成:corpus.jsonl + queries_raw.jsonl,anchor=2026-07-06,共 708 题
+{"query": "优化文档分块时，重叠部分通常占多大比例比较合理？", "mode": "episode", "expect": ["ep_syn0018"], "type": "semantic", "note": "换说法：重叠窗口→重叠部分，避免照抄原文连续短语"}
+{"query": "NLTK 分句", "mode": "detail", "expect": ["ep_syn0018"], "type": "verbatim", "note": "原文逐字出现，指分句工具"}
+{"query": "分块", "mode": "detail", "expect": ["ep_syn0018"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "重排模型太慢，考虑换什么更高效的模型？", "mode": "episode", "expect": ["ep_syn0019"], "type": "semantic", "note": "cross-encoder→重排模型，ColBERT→更高效模型，换表述"}
+{"query": "ColBERT", "mode": "detail", "expect": ["ep_syn0019"], "type": "verbatim", "note": "原文逐字出现，重排模型名"}
+{"query": "延迟", "mode": "detail", "expect": ["ep_syn0019"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "生成模型胡乱编造信息，有什么办法减少这种错误？", "mode": "episode", "expect": ["ep_syn0020"], "type": "semantic", "note": "幻觉→编造事实，治理→减少错误，换说法"}
+{"query": "DeBERTa-v3-base", "mode": "detail", "expect": ["ep_syn0020"], "type": "verbatim", "note": "原文逐字出现，NLI模型名"}
+{"query": "幻觉", "mode": "detail", "expect": ["ep_syn0020"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "分块策略调整后效果不明显，需要关注哪些方面？", "mode": "episode", "expect": ["ep_syn0021"], "type": "semantic", "note": "准确率提升有限→效果不明显，换说法"}
+{"query": "MRR", "mode": "detail", "expect": ["ep_syn0021"], "type": "verbatim", "note": "原文逐字出现，评估指标"}
+{"query": "测试", "mode": "detail", "expect": ["ep_syn0021"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "对方数据是PDF格式，我们系统如何支持？", "mode": "episode", "expect": ["ep_syn0022"], "type": "semantic", "note": "PDF解析→开发处理模块，换说法"}
+{"query": "PyMuPDF", "mode": "detail", "expect": ["ep_syn0022"], "type": "verbatim", "note": "原文逐字出现，PDF解析库"}
+{"query": "处理", "mode": "detail", "expect": ["ep_syn0022"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0018", "ep_syn0021", "ep_syn0022"], "type": "concept", "note": "概念名，挂在此概念的所有记忆"}
+{"query": "重排算法", "mode": "concept", "expect": ["ep_syn0019"], "type": "concept", "note": "概念名，仅rag-02"}
+{"query": "之前关于分块策略的调整和测试结果，都聊了些什么？", "mode": "episode", "expect": ["ep_syn0018", "ep_syn0021"], "type": "multi", "note": "多条记忆围绕文档分块优化"}
+{"query": "有没有聊过模型部署到移动端的优化？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "关于数据标注的质量控制方法讨论过吗？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "之前遇到代码片段和说明文字总被分割器拆散，后来是怎么优化分块策略的", "mode": "episode", "expect": ["ep_syn0023"], "type": "semantic", "note": "技术文档代码解释被切开 → 代码片段和说明文字被拆散；优化分块策略 → 优化分块，换词换句式"}
+{"query": "MarkdownHeaderTextSplitter", "mode": "detail", "expect": ["ep_syn0023"], "type": "verbatim", "note": "原文逐字专有名词，区分度高"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0023", "ep_syn0025", "ep_syn0026"], "type": "concept", "note": "概念名，跨条收集挂有此概念的记忆"}
+{"query": "医疗RAG的响应时间从300ms涨到500ms，你们最后用了什么办法压下去的", "mode": "episode", "expect": ["ep_syn0024"], "type": "semantic", "note": "重排延迟优化 → 响应时间优化，换了整个问题场景的表述"}
+{"query": "bge-reranker-base", "mode": "detail", "expect": ["ep_syn0024"], "type": "verbatim", "note": "原文出现的具体模型名，是独特搭配"}
+{"query": "重排序模型", "mode": "concept", "expect": ["ep_syn0024"], "type": "concept", "note": "概念名，rag-07的节点概念"}
+{"query": "怎么让分块边界跟着文档结构走，而不是按固定字数硬切", "mode": "episode", "expect": ["ep_syn0025"], "type": "semantic", "note": "基于语义边界的分块 → 边界跟着结构走；固定大小 → 固定字数硬切，全部改写"}
+{"query": "Unstructured.io", "mode": "detail", "expect": ["ep_syn0025"], "type": "verbatim", "note": "原文出现的库名，逐字匹配"}
+{"query": "滑动窗口", "mode": "detail", "expect": ["ep_syn0025"], "type": "short", "note": "两字对抗题，原文出现"}
+{"query": "之前PDF手册被切碎的问题，后来调了哪些参数解决的", "mode": "episode", "expect": ["ep_syn0026"], "type": "semantic", "note": "产品手册章节被切碎 → PDF手册被切碎，问题表述一致但换词"}
+{"query": "ms-marco-MiniLM-L-12-v2", "mode": "detail", "expect": ["ep_syn0026"], "type": "verbatim", "note": "原文出现的重排模型名，逐字匹配"}
+{"query": "RAG 问答机器人", "mode": "concept", "expect": ["ep_syn0026", "ep_syn0027"], "type": "concept", "note": "概念名，跨条收集挂有此概念的记忆"}
+{"query": "cross-encoder重排太慢，除了换小模型还有哪些招", "mode": "episode", "expect": ["ep_syn0027"], "type": "semantic", "note": "推理慢，每个查询要200ms → 重排太慢，除了换小模型（轻量级模型），概括优化方向"}
+{"query": "dynamic padding", "mode": "detail", "expect": ["ep_syn0027"], "type": "verbatim", "note": "原文出现的技术术语，逐字匹配"}
+{"query": "重排", "mode": "detail", "expect": ["ep_syn0027"], "type": "short", "note": "两字对抗，原文高频出现"}
+{"query": "关于提高检索准确性的整体思路，之前都聊过哪些方面的优化", "mode": "episode", "expect": ["ep_syn0023", "ep_syn0024", "ep_syn0025", "ep_syn0026", "ep_syn0027"], "type": "multi", "note": "所有记忆都围绕RAG检索优化（分块、重排），话题统一"}
+{"query": "RAG系统在多语言场景下的字体兼容性问题，你们遇到过吗", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，所有记忆均未涉及多语言或字体问题"}
+{"query": "上次客户投诉机器人瞎回答，后来用什么法子压住了幻觉？", "mode": "episode", "expect": ["ep_syn0028"], "type": "semantic", "note": "客户投诉→瞎回答，压住幻觉→幻觉率降低，核心语义匹配"}
+{"query": "阈值调整很重要", "mode": "detail", "expect": ["ep_syn0028"], "type": "verbatim", "note": "原文原话，区分度高"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0028", "ep_syn0030"], "type": "concept", "note": "概念名，跨两条记忆"}
+{"query": "系统响应慢用户抱怨，后来怎么优化的来着？", "mode": "episode", "expect": ["ep_syn0029"], "type": "semantic", "note": "响应慢→延迟高，优化→缓存和异步化，语义对应"}
+{"query": "平均响应时间从 1.2s 降到 0.8s", "mode": "detail", "expect": ["ep_syn0029"], "type": "verbatim", "note": "原文原话，包含具体数字组合"}
+{"query": "RAG 问答机器人", "mode": "concept", "expect": ["ep_syn0028", "ep_syn0029", "ep_syn0030"], "type": "concept", "note": "核心概念，挂在多条记忆上"}
+{"query": "延迟", "mode": "detail", "expect": ["ep_syn0029"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "上次那个RAG项目跑了三个月，最后效果咋样？", "mode": "episode", "expect": ["ep_syn0030"], "type": "semantic", "note": "效果→准确率、投诉率数据，核心语义改写"}
+{"query": "recall@10 是 85%", "mode": "detail", "expect": ["ep_syn0030"], "type": "verbatim", "note": "原文原话，包含具体指标"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0030", "ep_syn0031"], "type": "concept", "note": "概念名，跨两条记忆"}
+{"query": "分块", "mode": "detail", "expect": ["ep_syn0030", "ep_syn0031"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "之前分块用默认参数，结果召回的段落很碎，后来怎么调整的？", "mode": "episode", "expect": ["ep_syn0031"], "type": "semantic", "note": "段落碎→召回段落连不成完整句子，调整→换长上下文模型"}
+{"query": "bge-large-zh", "mode": "detail", "expect": ["ep_syn0031"], "type": "verbatim", "note": "原文专有名词，区分度高"}
+{"query": "Embedding 模型", "mode": "concept", "expect": ["ep_syn0031"], "type": "concept", "note": "概念名，挂载于该记忆"}
+{"query": "重叠", "mode": "detail", "expect": ["ep_syn0031"], "type": "short", "note": "两字对抗，原文出现（overlap）"}
+{"query": "重排模型换了bge-reranker，但好像没啥提升，有啥优化技巧？", "mode": "episode", "expect": ["ep_syn0032"], "type": "semantic", "note": "没啥提升→效果不明显，优化技巧→加前缀和对比模型"}
+{"query": "bge-reranker", "mode": "detail", "expect": ["ep_syn0032"], "type": "verbatim", "note": "原文专有名词，区分度高"}
+{"query": "重排算法", "mode": "concept", "expect": ["ep_syn0032"], "type": "concept", "note": "概念名，挂载于该记忆"}
+{"query": "召回", "mode": "detail", "expect": ["ep_syn0032"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "最近在优化RAG系统，主要从哪些方面下手？", "mode": "episode", "expect": ["ep_syn0029", "ep_syn0030", "ep_syn0031", "ep_syn0032"], "type": "multi", "note": "涉及架构、评估、分块、重排，多条记忆围绕同一话题"}
+{"query": "有没有聊过RAG系统用什么向量数据库？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "RAG在教育领域的应用案例？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "RAG瞎编数据的问题有啥治标治本的法子", "mode": "episode", "expect": ["ep_syn0033"], "type": "semantic", "note": "将“幻觉编造具体数据”换为“瞎编数据”，将“治理问题”换为“治标治本的法子”"}
+{"query": "那个回答慢半拍的毛病是咋回事", "mode": "episode", "expect": ["ep_syn0034"], "type": "semantic", "note": "将“响应慢”换为“慢半拍的毛病”，问原因"}
+{"query": "比较类问题回答老是偏向后一个", "mode": "episode", "expect": ["ep_syn0035"], "type": "semantic", "note": "将“位置偏见”换为“老是偏向后一个”，指向重排问题"}
+{"query": "分块不当导致检索失效咋整", "mode": "episode", "expect": ["ep_syn0167", "ep_syn0169"], "type": "multi", "note": "多条记忆都涉及分块策略对检索/问答质量的影响，需同时命中"}
+{"query": "回答老是扯到文档外的内容咋办", "mode": "episode", "expect": ["ep_syn0169"], "type": "semantic", "note": "将“幻觉”换为“扯到文档外的内容”，更口语化"}
+{"query": "引用验证", "mode": "detail", "expect": ["ep_syn0033"], "type": "verbatim", "note": "原文核心机制，4字短语，逐字匹配"}
+{"query": "ef_construction", "mode": "detail", "expect": ["ep_syn0034"], "type": "verbatim", "note": "原文关键参数名，英文专有名词"}
+{"query": "bge-reranker", "mode": "detail", "expect": ["ep_syn0035"], "type": "verbatim", "note": "原文重排模型名，专有名词"}
+{"query": "pdfplumber", "mode": "detail", "expect": ["ep_syn0167"], "type": "verbatim", "note": "原文PDF处理库名，专有名词"}
+{"query": "SentenceWindowNodeParser", "mode": "detail", "expect": ["ep_syn0169"], "type": "verbatim", "note": "原文节点解析器名，专有名词"}
+{"query": "抽样", "mode": "detail", "expect": ["ep_syn0167"], "type": "short", "note": "原文出现的两字词，用于验证短词检索"}
+{"query": "阈值", "mode": "detail", "expect": ["ep_syn0169"], "type": "short", "note": "原文出现的两字词，用于验证短词检索"}
+{"query": "分块策略", "mode": "concept", "expect": ["ep_syn0167", "ep_syn0169", "ep_syn0034"], "type": "concept", "note": "该概念名在三段记忆的nodes中均出现，需命中所有相关id"}
+{"query": "向量数据库选型和管理的经验", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，材料集中于RAG系统设计，未涉及数据库运维"}
+{"query": "多轮对话的上下文记忆怎么实现", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，材料聚焦于单轮检索增强，未涉及对话管理"}
+{"query": "之前分块用固定长度，总是把句子切得支离破碎，后来怎么改进的？", "mode": "episode", "expect": ["ep_syn0018"], "type": "semantic", "note": "语义改写，核心是动态分块避免切断语义"}
+{"query": "JSON 格式", "mode": "detail", "expect": ["ep_syn0018"], "type": "verbatim", "note": "原文逐字出现，区分度高"}
+{"query": "重叠", "mode": "detail", "expect": ["ep_syn0018"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "重排模块太卡了，换个轻量级模型能解决吗？", "mode": "episode", "expect": ["ep_syn0019"], "type": "semantic", "note": "语义改写，核心是延迟优化和ColBERT推荐"}
+{"query": "ColBERT", "mode": "detail", "expect": ["ep_syn0019"], "type": "verbatim", "note": "原文逐字出现，专有名词"}
+{"query": "机器人回答时老是瞎编，有没有办法让它更忠实于资料？", "mode": "episode", "expect": ["ep_syn0020"], "type": "semantic", "note": "语义改写，核心是幻觉治理和NLI验证"}
+{"query": "NLI 模型", "mode": "detail", "expect": ["ep_syn0020"], "type": "verbatim", "note": "原文逐字出现，技术术语"}
+{"query": "改了分块规则后准确率没怎么上去，问题可能出在哪？", "mode": "episode", "expect": ["ep_syn0021"], "type": "semantic", "note": "语义改写，核心是分块策略测试效果不佳"}
+{"query": "分块", "mode": "detail", "expect": ["ep_syn0021"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "外部团队用PDF格式，我们系统不支持，得怎么处理？", "mode": "episode", "expect": ["ep_syn0022"], "type": "semantic", "note": "语义改写，核心是PDF格式转换需求"}
+{"query": "PyMuPDF", "mode": "detail", "expect": ["ep_syn0022"], "type": "verbatim", "note": "原文逐字出现，工具名"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0018", "ep_syn0021", "ep_syn0022"], "type": "concept", "note": "概念'文档分块'在多条记忆中出现"}
+{"query": "我们之前讨论文档分块，还提到了哪些改进点？", "mode": "episode", "expect": ["ep_syn0018", "ep_syn0021"], "type": "multi", "note": "多命中题，rag-01和rag-04都涉及分块优化讨论"}
+{"query": "有没有讨论过如何提升模型的推理速度？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，材料未涉及模型推理速度优化"}
+{"query": "用户反馈收集流程怎么设计的？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，材料未谈用户反馈流程"}
+{"query": "处理技术文档时，分块工具老是把代码和解释拆散，有什么好办法吗？", "mode": "episode", "expect": ["ep_syn0023"], "type": "semantic", "note": "口语化表述分块问题，语义一致"}
+{"query": "parent_title", "mode": "detail", "expect": ["ep_syn0023"], "type": "verbatim", "note": "原文逐字出现的元数据字段名"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0023", "ep_syn0026"], "type": "concept", "note": "所有挂有该概念的记忆"}
+{"query": "医疗问答系统加了重排序步骤后响应变慢，有什么优化思路？", "mode": "episode", "expect": ["ep_syn0024"], "type": "semantic", "note": "医疗场景和优化方向语义匹配"}
+{"query": "optimum", "mode": "detail", "expect": ["ep_syn0024"], "type": "verbatim", "note": "原文中提到的库名，有区分度"}
+{"query": "重排序模型", "mode": "concept", "expect": ["ep_syn0024"], "type": "concept", "note": "概念在记忆中明确出现"}
+{"query": "用固定大小切分文档，长的上下文断了，短的又信息太杂，该怎么解决？", "mode": "episode", "expect": ["ep_syn0025"], "type": "semantic", "note": "固定分块问题的口语化表述"}
+{"query": "余弦相似度", "mode": "detail", "expect": ["ep_syn0025"], "type": "verbatim", "note": "原文中描述语义检测的具体方法"}
+{"query": "语义分块", "mode": "concept", "expect": ["ep_syn0025"], "type": "concept", "note": "记忆节点中的核心概念"}
+{"query": "产品手册PDF分块后章节内容被拆散，怎么调整参数能改善检索？", "mode": "episode", "expect": ["ep_syn0026"], "type": "semantic", "note": "PDF分块问题和参数调整的语义对应"}
+{"query": "config.json", "mode": "detail", "expect": ["ep_syn0026"], "type": "verbatim", "note": "原文中具体提到的配置文件名"}
+{"query": "结果重排", "mode": "concept", "expect": ["ep_syn0026", "ep_syn0027"], "type": "concept", "note": "两记忆节点均包含此概念"}
+{"query": "重排序模型推理太慢，只对最相关的几个结果排序能快多少？", "mode": "episode", "expect": ["ep_syn0027"], "type": "semantic", "note": "重排模型延迟和top-k调整的语义匹配"}
+{"query": "dynamic padding", "mode": "detail", "expect": ["ep_syn0027"], "type": "verbatim", "note": "原文中优化推理的具体技术术语"}
+{"query": "切分", "mode": "detail", "expect": ["ep_syn0025"], "type": "short", "note": "两字对抗，原文在描述分块时出现"}
+{"query": "在RAG系统优化中，我们讨论了哪些具体的技术方案？", "mode": "episode", "expect": ["ep_syn0023", "ep_syn0024", "ep_syn0025", "ep_syn0026", "ep_syn0027"], "type": "multi", "note": "所有记忆均涉及RAG系统优化的不同方面"}
+{"query": "有没有聊过向量数据库的索引结构优化？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "怎么防止聊天机器人瞎编东西被客户投诉？", "mode": "episode", "expect": ["ep_syn0028"], "type": "semantic", "note": "幻觉→瞎编东西, 客户投诉相同, 全换说法"}
+{"query": "系统响应太慢，用户抱怨，有什么办法加快？", "mode": "episode", "expect": ["ep_syn0029"], "type": "semantic", "note": "延迟→响应慢, 优化方案换自然问法"}
+{"query": "项目做了这么久，效果到底怎么样？", "mode": "episode", "expect": ["ep_syn0030"], "type": "semantic", "note": "评估效果换口语化问句"}
+{"query": "分块大小设置不好导致答案不连贯，怎么调整？", "mode": "episode", "expect": ["ep_syn0031"], "type": "semantic", "note": "512 token太小→分块大小设置不好, 不连贯换说法"}
+{"query": "重排用了bge-reranker，但效果不明显，问题出在哪？", "mode": "episode", "expect": ["ep_syn0032"], "type": "semantic", "note": "提升不明显→效果不明显, 原因换问法"}
+{"query": "阈值 0.85", "mode": "detail", "expect": ["ep_syn0028"], "type": "verbatim", "note": "原文逐字数字组合, 区分度高"}
+{"query": "bge-large-zh", "mode": "detail", "expect": ["ep_syn0031"], "type": "verbatim", "note": "原文逐字模型名, 专有名词"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0028", "ep_syn0030"], "type": "concept", "note": "概念名, 跨记忆rag-13和rag-15都包含此节点"}
+{"query": "Embedding 模型", "mode": "concept", "expect": ["ep_syn0031"], "type": "concept", "note": "概念名, 仅在rag-16节点中"}
+{"query": "阈值", "mode": "detail", "expect": ["ep_syn0028"], "type": "short", "note": "两字对抗, 原文出现"}
+{"query": "RAG系统中有哪些方法可以提升响应速度？", "mode": "episode", "expect": ["ep_syn0029", "ep_syn0032"], "type": "multi", "note": "延迟优化相关, rag-14和rag-17都涉及"}
+{"query": "如何用深度学习做图像识别？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "数据库性能调优技巧有哪些？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "咱们那个RAG系统瞎编数据的问题，有什么靠谱的制衡办法吗？", "mode": "episode", "expect": ["ep_syn0033"], "type": "semantic", "note": "瞎编数据→幻觉、制衡办法→约束和验证，换词换说法"}
+{"query": "低置信度的句子", "mode": "detail", "expect": ["ep_syn0033"], "type": "verbatim", "note": "原文逐字短语，用于验证机制的具体触发条件"}
+{"query": "我们那个RAG服务第一次回答太慢了，有啥优化思路？", "mode": "episode", "expect": ["ep_syn0034"], "type": "semantic", "note": "太慢→延迟，优化思路→分块参数和重排pipeline的权衡，换说法"}
+{"query": "ef_construction 设的200", "mode": "detail", "expect": ["ep_syn0034"], "type": "verbatim", "note": "原文具体参数配置，区分度高"}
+{"query": "bge-reranker", "mode": "detail", "expect": ["ep_syn0035"], "type": "verbatim", "note": "原文提及的专有模型名，用于位置扰动环节"}
+{"query": "分块策略", "mode": "concept", "expect": ["ep_syn0034", "ep_syn0167", "ep_syn0169"], "type": "concept", "note": "跨条概念，指代原文中讨论的所有分块相关设置与问题"}
+{"query": "产品同事说咱们的RAG回答‘A和B哪个更好’时老是偏爱B，怎么治？", "mode": "episode", "expect": ["ep_syn0035"], "type": "semantic", "note": "偏爱B→偏向后提到的实体，怎么治→查询顺序扰动，换说法"}
+{"query": "标题", "mode": "detail", "expect": ["ep_syn0167"], "type": "short", "note": "两字对抗，原文在讨论PDF元数据提取时出现"}
+{"query": "处理IEEE两栏PDF时，分块把公式拆散了，检索效果变差，怎么搞？", "mode": "episode", "expect": ["ep_syn0167"], "type": "semantic", "note": "拆散公式→语义完整性破坏，怎么搞→pdfplumber与语义分块，换说法"}
+{"query": "10% 重叠", "mode": "detail", "expect": ["ep_syn0167"], "type": "verbatim", "note": "原文提及的常见分块重叠设置，具体数字组合"}
+{"query": "我们那个问答机器人总出幻觉，分块又老是把段落切断，该先动哪块？", "mode": "episode", "expect": ["ep_syn0169"], "type": "semantic", "note": "总出幻觉、段落切断→语义分块不完整，先动哪块→语义分块与重排，换说法"}
+{"query": "LlamaIndex 的 SentenceWindowNodeParser", "mode": "detail", "expect": ["ep_syn0169"], "type": "verbatim", "note": "原文提及的专有工具名，用于语义分块"}
+{"query": "阈值", "mode": "detail", "expect": ["ep_syn0169"], "type": "short", "note": "两字对抗，原文在讨论幻觉置信度过滤时出现"}
+{"query": "怎么优化检索的延迟？", "mode": "episode", "expect": ["ep_syn0034"], "type": "semantic", "note": "检索延迟→分块与索引参数调整，换说法提问"}
+{"query": "重排算法", "mode": "concept", "expect": ["ep_syn0035", "ep_syn0169"], "type": "concept", "note": "跨条概念，指代原文中讨论的所有重排模型与位置偏见问题"}
+{"query": "我们那个RAG机器人处理学术论文PDF效果不好，有什么建议？", "mode": "episode", "expect": ["ep_syn0167"], "type": "semantic", "note": "效果不好→分块问题，建议→pdfplumber与语义分块方案，换说法"}
+{"query": "向量索引", "mode": "concept", "expect": ["ep_syn0034"], "type": "concept", "note": "单条记忆概念，指代HNSW等索引构建与查询延迟问题"}
+{"query": "有没有聊过多模态RAG的架构设计？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，讨论范围限于文本RAG"}
+{"query": "RAG 问答系统", "mode": "concept", "expect": ["ep_syn0033", "ep_syn0034", "ep_syn0035"], "type": "concept", "note": "跨条核心概念，指代幻觉、延迟、偏见等所有系统级问题"}
+{"query": "我们那个问答机器人项目，用cross-encoder重排效果怎么样？", "mode": "episode", "expect": ["ep_syn0169"], "type": "semantic", "note": "效果怎么样→讨论其对相关性的提升，换说法"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0033", "ep_syn0169"], "type": "concept", "note": "跨条概念，指代原文中讨论的约束、验证、置信度等所有反幻觉方法"}
+{"query": "检索增强的微调策略你们讨论过吗？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，仅讨论检索与生成阶段的策略"}
+{"query": "有没有考虑过向量数据库的选型对比？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，讨论限于索引算法参数调整"}
+{"query": "你们那个RAG项目处理PDF和处理一般文档的分块，有什么不同？", "mode": "episode", "expect": ["ep_syn0167", "ep_syn0169"], "type": "multi", "note": "多命中题，覆盖学术PDF(rag-09)与通用问答(rag-10)的分块讨论"}
+{"query": "解决RAG幻觉和提升相关性，你们都试过哪些组合拳？", "mode": "episode", "expect": ["ep_syn0033", "ep_syn0169"], "type": "multi", "note": "多命中题，覆盖幻觉治理(rag-18)与相关性提升(rag-10)的组合讨论"}
+{"query": "我们那个问答机器人，固定长度切块效果不太好，你建议怎么改", "mode": "episode", "expect": ["ep_syn0018"], "type": "semantic", "note": "将“固定512 token大小分块效果不好”改为更口语化的提问，核心同义"}
+{"query": "512 token", "mode": "detail", "expect": ["ep_syn0018"], "type": "verbatim", "note": "原文逐字出现的固定分块大小参数，区分度高"}
+{"query": "分块策略测试下来效果一般，评估指标用了哪些", "mode": "episode", "expect": ["ep_syn0021"], "type": "semantic", "note": "改写了“检索准确率只提升了2%”和“只看了 MRR 和 Recall@10”的核心意思"}
+{"query": "MRR 和 Recall@10", "mode": "detail", "expect": ["ep_syn0021"], "type": "verbatim", "note": "原文出现的评估指标缩写组合"}
+{"query": "重排太慢影响体验，现在换成什么模型能快点", "mode": "episode", "expect": ["ep_syn0019"], "type": "semantic", "note": "将“重排模块跑得太慢，延迟高”换为“太慢影响体验”并询问替代方案"}
+{"query": "bert-base-cross-encoder", "mode": "detail", "expect": ["ep_syn0019"], "type": "verbatim", "note": "原文出现的重排模型具体名称"}
+{"query": "回答不靠谱老是编故事，怎么治", "mode": "episode", "expect": ["ep_syn0020"], "type": "semantic", "note": "将“产生幻觉，编造不存在的事实”替换为更口语化的“老是编故事”"}
+{"query": "NLI 模型验证生成内容", "mode": "detail", "expect": ["ep_syn0020"], "type": "verbatim", "note": "原文出现的具体技术步骤描述"}
+{"query": "团队那边要用PDF格式，咱们系统怎么支持", "mode": "episode", "expect": ["ep_syn0022"], "type": "semantic", "note": "将“数据格式是PDF，我们只支持JSON”转化为一个面向集成的具体问题"}
+{"query": "PDF 处理管道", "mode": "detail", "expect": ["ep_syn0022"], "type": "verbatim", "note": "原文提出的解决方案核心短语"}
+{"query": "分块策略的测试情况怎么样？", "mode": "episode", "expect": ["ep_syn0018", "ep_syn0021"], "type": "multi", "note": "问题同时关联了分块策略的基础讨论（rag-01）和测试评估（rag-04）"}
+{"query": "延迟", "mode": "detail", "expect": ["ep_syn0019", "ep_syn0020"], "type": "short", "note": "两字对抗题，原文“延迟”在rag-02和rag-03中均出现，但含义不同（系统延迟 vs 验证延迟）"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0018", "ep_syn0021"], "type": "concept", "note": "概念名直接作为query，两条记忆的nodes中均包含此概念"}
+{"query": "重排算法", "mode": "concept", "expect": ["ep_syn0019"], "type": "concept", "note": "概念名直接作为query，仅rag-02的nodes包含此概念"}
+{"query": "NLI 模型", "mode": "concept", "expect": ["ep_syn0020"], "type": "concept", "note": "概念名直接作为query，仅rag-03的nodes包含此概念"}
+{"query": "PDF 处理", "mode": "concept", "expect": ["ep_syn0022"], "type": "concept", "note": "概念名直接作为query，仅rag-05的nodes包含此概念"}
+{"query": "我们讨论过怎么选向量数据库吗？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，材料仅讨论检索流程和模型，未涉及底层向量数据库选型"}
+{"query": "最近有聊多语言支持的事情吗", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，材料均围绕中文或单语言场景下的技术问题"}
+{"query": "之前代码老是被切断，问答效果差，后来怎么解决的", "mode": "episode", "expect": ["ep_syn0023"], "type": "semantic", "note": "代码切断→分块问题，问答效果差→检索效果差，全换说法"}
+{"query": "MarkdownHeaderTextSplitter", "mode": "detail", "expect": ["ep_syn0023"], "type": "verbatim", "note": "原文逐字专有名词，区分度高"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0023", "ep_syn0026"], "type": "concept", "note": "概念名，挂在多条记忆上"}
+{"query": "之前医疗问答那个模型加上重排后响应变慢，怎么优化", "mode": "episode", "expect": ["ep_syn0024"], "type": "semantic", "note": "医疗问答→医疗场景，响应变慢→延迟增加，重排→reranker，全换说法"}
+{"query": "bge-reranker-base", "mode": "detail", "expect": ["ep_syn0024"], "type": "verbatim", "note": "原文逐字模型名称，区分度高"}
+{"query": "重排", "mode": "detail", "expect": ["ep_syn0024", "ep_syn0026", "ep_syn0027"], "type": "short", "note": "两字词，出现在多条记忆中"}
+{"query": "固定分块效果不稳定，怎么用语义边界来切", "mode": "episode", "expect": ["ep_syn0025"], "type": "semantic", "note": "固定大小→固定分块，语义边界→语义分块，全换说法"}
+{"query": "Unstructured.io", "mode": "detail", "expect": ["ep_syn0025"], "type": "verbatim", "note": "原文逐字库名，区分度高"}
+{"query": "语义分块", "mode": "concept", "expect": ["ep_syn0025"], "type": "concept", "note": "概念名，只挂在本条记忆"}
+{"query": "客服机器人的PDF文档被切得支离破碎，后来改了什么策略", "mode": "episode", "expect": ["ep_syn0026"], "type": "semantic", "note": "固定分块→切碎，PDF文档→章节，全换说法"}
+{"query": "512 tokens", "mode": "detail", "expect": ["ep_syn0026"], "type": "verbatim", "note": "原文逐字数字组合，区分度高"}
+{"query": "分块", "mode": "detail", "expect": ["ep_syn0023", "ep_syn0025", "ep_syn0026"], "type": "short", "note": "两字词，出现在多条记忆中"}
+{"query": "重排模型推理太慢，并发高时是瓶颈，怎么优化的", "mode": "episode", "expect": ["ep_syn0027"], "type": "semantic", "note": "cross-encoder→重排模型，200ms→推理慢，瓶颈→并发高，全换说法"}
+{"query": "dynamic padding", "mode": "detail", "expect": ["ep_syn0027"], "type": "verbatim", "note": "原文逐字技术术语，区分度高"}
+{"query": "分块策略上有哪些尝试", "mode": "episode", "expect": ["ep_syn0023", "ep_syn0025", "ep_syn0026"], "type": "multi", "note": "多条记忆涉及分块策略优化"}
+{"query": "有没有聊过用BERT做情感分析", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，相邻领域"}
+{"query": "RAG系统如何处理多语言文档", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "向量数据库的索引构建有什么最佳实践", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "我们客服机器人老是瞎编答案，客户都投诉了，该怎么自动抓出来？", "mode": "episode", "expect": ["ep_syn0028"], "type": "semantic", "note": "换词编造→瞎编，检测→抓出来，全换说法"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0028", "ep_syn0030"], "type": "concept", "note": "概念“幻觉治理”出现在多条记忆中"}
+{"query": "RAG集成后接口乱，响应还慢，有什么架构上能改的？", "mode": "episode", "expect": ["ep_syn0029"], "type": "semantic", "note": "换说法集成→接口不统一，响应慢→延迟高"}
+{"query": "缓存", "mode": "detail", "expect": ["ep_syn0029"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "那个RAG项目跑了几个月，准确率和投诉率变化大吗？花了多少钱？", "mode": "episode", "expect": ["ep_syn0030"], "type": "semantic", "note": "换说法评估→准确率和投诉率，成本→钱"}
+{"query": "recall@10是85%", "mode": "detail", "expect": ["ep_syn0030"], "type": "verbatim", "note": "原文逐字数字和指标组合"}
+{"query": "之前讨论过减少客服机器人错误的方法，现在实际效果提升了多少？", "mode": "episode", "expect": ["ep_syn0028", "ep_syn0030"], "type": "multi", "note": "多条记忆围绕幻觉治理"}
+{"query": "分块设置太小，导致召回的文本碎片化，有什么调整建议？", "mode": "episode", "expect": ["ep_syn0031"], "type": "semantic", "note": "换说法分块大小→设置太小，碎片化→断断续续"}
+{"query": "512 token的分块", "mode": "detail", "expect": ["ep_syn0031"], "type": "verbatim", "note": "原文逐字数字组合"}
+{"query": "重排用了bge-reranker，但回答质量没明显变好，该怎么调？", "mode": "episode", "expect": ["ep_syn0032"], "type": "semantic", "note": "换说法提升不明显→没明显变好"}
+{"query": "bge-reranker", "mode": "detail", "expect": ["ep_syn0032"], "type": "verbatim", "note": "原文逐字专有名词"}
+{"query": "如何自己训练一个RAG模型？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，记忆只涉及RAG应用和优化"}
+{"query": "RAG系统部署在云端需要什么配置？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，记忆未讨论部署配置"}
+{"query": "RAG回答里老出现没有依据的数字，有什么好办法处理？", "mode": "episode", "expect": ["ep_syn0033"], "type": "semantic", "note": "语义改写：瞎编→没有依据，幻觉→处理方法"}
+{"query": "引用验证机制", "mode": "detail", "expect": ["ep_syn0033"], "type": "verbatim", "note": "原文逐字短语，区分度高"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0033"], "type": "concept", "note": "节点概念名，直接对应记忆"}
+{"query": "RAG服务首答延迟大，瓶颈在哪儿？", "mode": "episode", "expect": ["ep_syn0034"], "type": "semantic", "note": "语义改写：响应慢→首答延迟，分块和索引→瓶颈"}
+{"query": "ef_construction 设的200", "mode": "detail", "expect": ["ep_syn0034"], "type": "verbatim", "note": "原文逐字数字组合，具体配置参数"}
+{"query": "分块策略", "mode": "concept", "expect": ["ep_syn0034", "ep_syn0167"], "type": "concept", "note": "节点概念名，跨条收集"}
+{"query": "RAG回答‘A和B哪个更好’时总偏向B，怎么处理这种倾斜？", "mode": "episode", "expect": ["ep_syn0035"], "type": "semantic", "note": "换词：偏向后提到→总偏向B，位置偏见→倾斜"}
+{"query": "bge-reranker", "mode": "detail", "expect": ["ep_syn0035"], "type": "verbatim", "note": "原文逐字工具名，区分度高"}
+{"query": "偏见", "mode": "detail", "expect": ["ep_syn0035"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "RAG处理学术PDF时，分块破坏了公式和引用，有什么优化思路？", "mode": "episode", "expect": ["ep_syn0167"], "type": "semantic", "note": "语义改写：学术论文PDF→学术PDF，拆开→破坏了"}
+{"query": "pdfplumber", "mode": "detail", "expect": ["ep_syn0167"], "type": "verbatim", "note": "原文逐字工具名，唯一出现"}
+{"query": "RAG分块策略有哪些优化考虑？", "mode": "episode", "expect": ["ep_syn0167", "ep_syn0034"], "type": "multi", "note": "多条记忆围绕分块策略话题"}
+{"query": "RAG检索结果相关性差，怎么进一步提高准确度？", "mode": "episode", "expect": ["ep_syn0169"], "type": "semantic", "note": "语义改写：相关性不高→相关性差，重排步骤→提高准确度"}
+{"query": "ms-marco-MiniLM-L-6-v2", "mode": "detail", "expect": ["ep_syn0169"], "type": "verbatim", "note": "原文逐字模型名，具体标识"}
+{"query": "我们RAG系统的幻觉问题有哪些治理方案？", "mode": "episode", "expect": ["ep_syn0033", "ep_syn0169"], "type": "multi", "note": "多条记忆围绕幻觉治理话题"}
+{"query": "RAG系统在数据安全方面有什么防护措施？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，数据安全未提及"}
+{"query": "RAG系统怎么集成第三方API来扩展知识库？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，API集成未讨论"}
+{"query": "上次说的切段算法具体是怎么处理长对话的，为什么太长的对话信息会丢失", "mode": "episode", "expect": ["ep_syn0001"], "type": "semantic", "note": "将‘超过3000字’改写为‘太长的对话’，将‘召回率掉到70%以下’改写为‘信息会丢失’，测试语义理解"}
+{"query": "话题边界检测", "mode": "detail", "expect": ["ep_syn0001"], "type": "verbatim", "note": "原文逐字出现的关键技术名词，区分度高"}
+{"query": "会话上下文管理器", "mode": "concept", "expect": ["ep_syn0001", "ep_syn0002", "ep_syn0005"], "type": "concept", "note": "概念名直接出现，且被mem-01、mem-02、mem-05多条记忆共享"}
+{"query": "蒸馏出来的摘要质量参差不齐，特别是长对话，有什么办法保证信息密度", "mode": "episode", "expect": ["ep_syn0002"], "type": "semantic", "note": "将‘长段落’改写为‘长对话’，将‘分层摘要’和‘事实点’整合为‘保证信息密度’的问法"}
+{"query": "局部敏感哈希（LSH）", "mode": "detail", "expect": ["ep_syn0002"], "type": "verbatim", "note": "原文逐字出现的具体算法名称和缩写"}
+{"query": "内存爆了，除了上量化，向量检索在长期记忆场景下对精度有什么特别要求", "mode": "episode", "expect": ["ep_syn0003"], "type": "semantic", "note": "将‘32G内存紧张’概括为‘内存爆了’，将‘精度是底线’改写为‘对精度有什么特别要求’"}
+{"query": "Recall@K", "mode": "detail", "expect": ["ep_syn0003"], "type": "verbatim", "note": "原文逐字出现的核心评估指标名称"}
+{"query": "量化", "mode": "detail", "expect": ["ep_syn0003"], "type": "short", "note": "两字对抗，原文在讨论PQ时出现"}
+{"query": "怎么才能让那些总结出来的事实点自己就带上实体和关系信息，方便后面建图", "mode": "episode", "expect": ["ep_syn0004"], "type": "semantic", "note": "将‘结构化的图谱数据’和‘实体列表和关系三元组’改写为更口语的‘带上实体和关系信息’"}
+{"query": "Oxigraph", "mode": "detail", "expect": ["ep_syn0004"], "type": "verbatim", "note": "原文逐字出现的轻量级图存储工具名"}
+{"query": "实体链接", "mode": "concept", "expect": ["ep_syn0004"], "type": "concept", "note": "概念名直接出现，mem-04专门讨论此概念"}
+{"query": "各个模块都是独立的，怎么把它们串成一个完整的流程，不让系统卡住", "mode": "episode", "expect": ["ep_syn0005"], "type": "semantic", "note": "将‘统一的会话上下文管理器’和‘异步处理’合并为‘串成完整流程’的问法"}
+{"query": "幂等性设计", "mode": "detail", "expect": ["ep_syn0005"], "type": "verbatim", "note": "原文逐字出现的架构设计关键点"}
+{"query": "有没有设计过整个长期记忆系统的整体架构，包括切分、摘要、索引这些环节怎么协作", "mode": "episode", "expect": ["ep_syn0001", "ep_syn0002", "ep_syn0003", "ep_syn0004", "ep_syn0005"], "type": "multi", "note": "问题笼统，覆盖整个系统设计话题，多条记忆从不同侧面回答"}
+{"query": "记忆系统的前端界面通常怎么设计比较好", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，所有对话均聚焦后端算法与架构"}
+{"query": "如果同时有很多用户在用这个记忆系统，后端该怎么处理并发", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，对话未讨论多用户并发场景"}
+{"query": "我们怎么确定记忆条目切分的段落长度？", "mode": "episode", "expect": ["ep_syn0006"], "type": "semantic", "note": "询问切段规则，换说法测试语义检索"}
+{"query": "切段", "mode": "detail", "expect": ["ep_syn0006"], "type": "short", "note": "两字对抗，原文出现“切段”"}
+{"query": "120字的软上限", "mode": "detail", "expect": ["ep_syn0006"], "type": "verbatim", "note": "原文逐字数字组合"}
+{"query": "向量存储我们打算用什么数据库？", "mode": "episode", "expect": ["ep_syn0007"], "type": "semantic", "note": "询问向量存储方案，换词问数据库"}
+{"query": "内存预算控制在 128G 以内", "mode": "detail", "expect": ["ep_syn0007"], "type": "verbatim", "note": "原文逐字具体预算"}
+{"query": "概念图的节点类型应该怎么划分？", "mode": "episode", "expect": ["ep_syn0008"], "type": "semantic", "note": "询问节点类型设计，换说法"}
+{"query": "标签", "mode": "detail", "expect": ["ep_syn0008"], "type": "short", "note": "两字对抗，原文“标签”多次出现"}
+{"query": "LLM蒸馏出来的事实怎么验证可靠性？", "mode": "episode", "expect": ["ep_syn0009"], "type": "semantic", "note": "询问事实校验，换词验证可靠性"}
+{"query": "30天自动衰减", "mode": "detail", "expect": ["ep_syn0009"], "type": "verbatim", "note": "原文逐字衰减规则"}
+{"query": "蒸馏", "mode": "concept", "expect": ["ep_syn0009", "ep_syn0010"], "type": "concept", "note": "概念名，挂该概念的记忆有mem-09和mem-10"}
+{"query": "跨对话的上下文太长怎么处理？", "mode": "episode", "expect": ["ep_syn0010"], "type": "semantic", "note": "询问上下文管理，换说法"}
+{"query": "每30轮", "mode": "detail", "expect": ["ep_syn0010"], "type": "verbatim", "note": "原文逐字触发频率"}
+{"query": "蒸馏过程有哪些相关讨论？", "mode": "episode", "expect": ["ep_syn0009", "ep_syn0010"], "type": "multi", "note": "蒸馏话题多条记忆，覆盖mem-09和mem-10"}
+{"query": "有没有聊过音乐推荐系统的优化？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "健身餐的配餐方案是什么？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "之前觉得切段方式太生硬，有什么更智能的办法吗？", "mode": "episode", "expect": ["ep_syn0011"], "type": "semantic", "note": "改写切段太粗暴为太生硬，话题检测为更智能的办法"}
+{"query": "生成摘要时总丢掉具体数字，怎么确保重要信息不被漏掉？", "mode": "episode", "expect": ["ep_syn0012"], "type": "semantic", "note": "蒸馏丢失关键数字改为摘要丢掉具体数字，提取结构化事实改为确保重要信息不被漏掉"}
+{"query": "测试的时候发现搜索结果不全，怎么把相关片段自动拼起来？", "mode": "episode", "expect": ["ep_syn0013"], "type": "semantic", "note": "切段粒度不匹配改为搜索结果不全，记忆合并改为自动拼起来"}
+{"query": "数据库后期扛不住十万数据，有没有更好的存储方案？", "mode": "episode", "expect": ["ep_syn0014"], "type": "semantic", "note": "性能问题改为扛不住十万数据，推荐Qdrant为更好的存储方案"}
+{"query": "项目名和功能描述混用，概念图里怎么理清关系？", "mode": "episode", "expect": ["ep_syn0015"], "type": "semantic", "note": "持久化记忆系统和长期记忆系统混用改为项目名和功能描述混用，概念图节点区分改为理清关系"}
+{"query": "事实骨架", "mode": "detail", "expect": ["ep_syn0012"], "type": "verbatim", "note": "原文逐字出现'事实骨架'，区分度高"}
+{"query": "overview字段", "mode": "detail", "expect": ["ep_syn0013"], "type": "verbatim", "note": "原文逐字出现'overview字段'，专有名词组合"}
+{"query": "记忆蒸馏", "mode": "concept", "expect": ["ep_syn0012", "ep_syn0013"], "type": "concept", "note": "概念名在mem-12和mem-15的nodes中"}
+{"query": "向量检索", "mode": "concept", "expect": ["ep_syn0013", "ep_syn0014"], "type": "concept", "note": "概念名在mem-15和mem-16的nodes中"}
+{"query": "切段", "mode": "detail", "expect": ["ep_syn0011"], "type": "short", "note": "两字中文词，原文出现"}
+{"query": "轻量", "mode": "detail", "expect": ["ep_syn0014"], "type": "short", "note": "两字中文词，原文出现"}
+{"query": "记忆系统各环节如何优化？", "mode": "episode", "expect": ["ep_syn0011", "ep_syn0012", "ep_syn0013"], "type": "multi", "note": "多条记忆涉及切段、蒸馏、检索的优化"}
+{"query": "最近有聊过图像生成技术吗？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "健身餐的营养搭配怎么计划？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "对话分段老是搞乱话题结构，怎么才能更智能地划分？", "mode": "episode", "expect": ["ep_syn0016"], "type": "semantic", "note": "换说法描述切段问题，不复用原文短语"}
+{"query": "切段", "mode": "concept", "expect": ["ep_syn0016", "ep_syn0165", "ep_syn0168"], "type": "concept", "note": "概念名，所有相关记忆"}
+{"query": "蒸馏摘要信息丢失严重，特别是细节，有什么好办法？", "mode": "episode", "expect": ["ep_syn0017"], "type": "semantic", "note": "改写蒸馏信息丢失问题"}
+{"query": "分层提示", "mode": "detail", "expect": ["ep_syn0017"], "type": "verbatim", "note": "原文逐字出现的术语"}
+{"query": "对话数据切段后，存储格式和时间标记怎么处理比较好？", "mode": "episode", "expect": ["ep_syn0165"], "type": "semantic", "note": "换说法讨论存储和时间戳"}
+{"query": "脚本", "mode": "detail", "expect": ["ep_syn0165"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "口语对话蒸馏时提取不准，规则模板和模型微调怎么做？", "mode": "episode", "expect": ["ep_syn0166"], "type": "semantic", "note": "改写蒸馏实现挑战"}
+{"query": "规则模板", "mode": "detail", "expect": ["ep_syn0166"], "type": "verbatim", "note": "原文逐字出现"}
+{"query": "切段模块效率低，检索慢，概念图乱，怎么整体优化？", "mode": "episode", "expect": ["ep_syn0168"], "type": "semantic", "note": "概括多个问题"}
+{"query": "滑动窗口算法", "mode": "detail", "expect": ["ep_syn0168"], "type": "verbatim", "note": "原文逐字出现"}
+{"query": "你们聊过蒸馏的哪些方面？", "mode": "episode", "expect": ["ep_syn0016", "ep_syn0017", "ep_syn0166", "ep_syn0168"], "type": "multi", "note": "多条记忆涉及蒸馏讨论"}
+{"query": "记忆系统的用户界面应该如何设计？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "部署这个系统需要什么硬件配置？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "分块老是把句子切开，怎么处理比较好？", "mode": "episode", "expect": ["ep_syn0018"], "type": "semantic", "note": "语义改写问分块切句问题，避免原文连续短语"}
+{"query": "NLTK分句", "mode": "detail", "expect": ["ep_syn0018"], "type": "verbatim", "note": "原文逐字出现的专有名词组合"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0018", "ep_syn0021"], "type": "concept", "note": "概念名，跨记忆rag-01和rag-04都涉及"}
+{"query": "重排太慢影响体验，有快一点的模型推荐吗？", "mode": "episode", "expect": ["ep_syn0019"], "type": "semantic", "note": "改写重排延迟问题，提到ColBERT替代"}
+{"query": "bert-base-cross-encoder", "mode": "detail", "expect": ["ep_syn0019"], "type": "verbatim", "note": "原文具体模型名，区分度高"}
+{"query": "重排", "mode": "detail", "expect": ["ep_syn0019"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "机器人老是编答案，怎么让它只基于事实回答？", "mode": "episode", "expect": ["ep_syn0020"], "type": "semantic", "note": "幻觉问题的口语化问法，避免连续短语"}
+{"query": "DeBERTa-v3-base", "mode": "detail", "expect": ["ep_syn0020"], "type": "verbatim", "note": "原文NLI模型的具体名称"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0020"], "type": "concept", "note": "概念名，只出现在rag-03"}
+{"query": "换了分块策略后准确率提升不大，问题可能出在哪？", "mode": "episode", "expect": ["ep_syn0021"], "type": "semantic", "note": "改写测试结果，避免与原文措辞重合"}
+{"query": "关于文档分块，我们讨论过哪些优化思路？", "mode": "episode", "expect": ["ep_syn0018", "ep_syn0021"], "type": "multi", "note": "多命中题，覆盖分块相关两条记忆"}
+{"query": "外部团队想用我们的机器人，但他们的文档是PDF格式，怎么处理？", "mode": "episode", "expect": ["ep_syn0022"], "type": "semantic", "note": "PDF集成场景的语义改写"}
+{"query": "PyMuPDF", "mode": "detail", "expect": ["ep_syn0022"], "type": "verbatim", "note": "原文提到的PDF处理库名"}
+{"query": "聊天机器人怎么支持多语言？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，相邻领域"}
+{"query": "用户认证系统怎么设计？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，完全无关话题"}
+{"query": "上次提到代码和解释老被切开，后来怎么解决的来着", "mode": "episode", "expect": ["ep_syn0023"], "type": "semantic", "note": "代码与解释被切开→技术文档、代码和解释经常被切开，核心问题换词表达"}
+{"query": "RecursiveCharacterTextSplitter", "mode": "detail", "expect": ["ep_syn0023", "ep_syn0025", "ep_syn0026"], "type": "verbatim", "note": "原文逐字出现的类名，区分度高，跨多条记忆"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0023", "ep_syn0026"], "type": "concept", "note": "直接使用记忆节点中的概念名，检查跨条收集能力"}
+{"query": "overlap", "mode": "detail", "expect": ["ep_syn0023", "ep_syn0025", "ep_syn0026"], "type": "short", "note": "两字对抗，原文中作为技术术语反复出现"}
+{"query": "分块有什么好的经验分享吗", "mode": "episode", "expect": ["ep_syn0023", "ep_syn0025", "ep_syn0026"], "type": "multi", "note": "多条记忆围绕文档分块话题，需多命中"}
+{"query": "重排序模型加了之后，响应时间变慢了，有什么优化思路", "mode": "episode", "expect": ["ep_syn0024"], "type": "semantic", "note": "重排导致响应时间变慢→加上这一步，响应时间从300ms涨到了500ms，核心问题换说法"}
+{"query": "ONNX Runtime 或 TensorRT", "mode": "detail", "expect": ["ep_syn0024"], "type": "verbatim", "note": "原文提到的具体优化工具名称，用于精确检索"}
+{"query": "重排序模型", "mode": "concept", "expect": ["ep_syn0024"], "type": "concept", "note": "直接使用记忆节点中的概念名"}
+{"query": "延迟", "mode": "detail", "expect": ["ep_syn0024"], "type": "short", "note": "两字对抗，原文中作为性能指标关键词"}
+{"query": "缓存有没有建议", "mode": "detail", "expect": ["ep_syn0024"], "type": "short", "note": "两字对抗，原文中作为解决方案被讨论"}
+{"query": "文档结构复杂，比如有表格代码，分块怎么做比较好", "mode": "episode", "expect": ["ep_syn0025"], "type": "semantic", "note": "固定分块不稳定→固定大小（比如512 token）做文档分块效果很不稳定，核心问题换说法"}
+{"query": "Unstructured.io", "mode": "detail", "expect": ["ep_syn0025"], "type": "verbatim", "note": "原文提到的具体库名称，专有名词，用于精确检索"}
+{"query": "Unstructured", "mode": "concept", "expect": ["ep_syn0025"], "type": "concept", "note": "直接使用记忆节点中的概念名"}
+{"query": "调试", "mode": "detail", "expect": ["ep_syn0025"], "type": "short", "note": "两字对抗，原文中作为动作关键词"}
+{"query": "有没有聊过图数据库在RAG里的应用", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，属于相邻但未涉及的领域"}
+{"query": "客服问答的机器人，之前分块后语义断开，比如产品手册的章节被切碎，怎么处理", "mode": "episode", "expect": ["ep_syn0026"], "type": "semantic", "note": "PDF文档分块后语义断开→PDF文档分块后语义断开，比如产品手册的章节被切碎，问题描述和场景换词"}
+{"query": "chunk_size 1024 tokens", "mode": "detail", "expect": ["ep_syn0026"], "type": "verbatim", "note": "原文提到的具体参数值，用于精确检索"}
+{"query": "重排部分", "mode": "concept", "expect": ["ep_syn0026", "ep_syn0027"], "type": "concept", "note": "直接使用记忆节点中的概念名（结果重排），需跨条收集"}
+{"query": "重排序推理慢，每个查询要200ms，怎么解决", "mode": "episode", "expect": ["ep_syn0027"], "type": "semantic", "note": "cross-encoder重排准确但慢→每个查询要200ms，核心问题换说法"}
+{"query": "max_length 为 512", "mode": "detail", "expect": ["ep_syn0027"], "type": "verbatim", "note": "原文提到的具体参数设置，用于精确检索"}
+{"query": "batch", "mode": "detail", "expect": ["ep_syn0027"], "type": "short", "note": "两字对抗，原文中作为优化讨论的关键词"}
+{"query": "cross-encoder", "mode": "detail", "expect": ["ep_syn0027"], "type": "verbatim", "note": "原文出现的具体模型类型名称，用于精确检索"}
+{"query": "有没有聊过多模态检索，比如图片和文本一起检索", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，属于更前沿但未涉及的领域"}
+{"query": "上次客服回答编造事实，后来怎么验证的？", "mode": "episode", "expect": ["ep_syn0028"], "type": "semantic", "note": "编造事实→幻觉、验证→后处理检查,换说法"}
+{"query": "deberta-v3-base-mnli", "mode": "detail", "expect": ["ep_syn0028"], "type": "verbatim", "note": "原文逐字专有名词,用于NLI模型"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0028", "ep_syn0030"], "type": "concept", "note": "幻觉治理概念,跨记忆共享"}
+{"query": "RAG系统响应慢的问题后来怎么解决的？", "mode": "episode", "expect": ["ep_syn0029"], "type": "semantic", "note": "响应慢→延迟高,缓存优化,换说法"}
+{"query": "circuit breaker 模式", "mode": "detail", "expect": ["ep_syn0029"], "type": "verbatim", "note": "原文逐字模式名称,用于降级策略"}
+{"query": "缓存", "mode": "detail", "expect": ["ep_syn0029"], "type": "short", "note": "两字对抗,原文出现缓存"}
+{"query": "RAG项目做了三个月，现在效果评估怎么样？", "mode": "episode", "expect": ["ep_syn0030"], "type": "semantic", "note": "评估整体效果,指标和效益,换说法"}
+{"query": "recall@10 85%", "mode": "detail", "expect": ["ep_syn0030"], "type": "verbatim", "note": "原文逐字指标数字"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0030"], "type": "concept", "note": "文档分块概念,评估中提到"}
+{"query": "分块太小导致召回段落很碎，怎么调整？", "mode": "episode", "expect": ["ep_syn0031"], "type": "semantic", "note": "碎片化→召回段落碎,分块策略调整"}
+{"query": "bge-large-zh", "mode": "detail", "expect": ["ep_syn0031"], "type": "verbatim", "note": "原文逐字embedding模型名"}
+{"query": "重叠", "mode": "detail", "expect": ["ep_syn0031"], "type": "short", "note": "两字对抗,原文出现重叠"}
+{"query": "重排模型用bge-reranker效果不好，可能原因是什么？", "mode": "episode", "expect": ["ep_syn0032"], "type": "semantic", "note": "效果不好→提升不明显,分析原因"}
+{"query": "cross-encoder/ms-marco-MiniLM-L-6-v2", "mode": "detail", "expect": ["ep_syn0032"], "type": "verbatim", "note": "原文逐字模型名,对比重排"}
+{"query": "重排", "mode": "detail", "expect": ["ep_syn0029", "ep_syn0032"], "type": "short", "note": "两字对抗,原文出现重排"}
+{"query": "我们RAG系统整体优化有哪些方面？", "mode": "episode", "expect": ["ep_syn0028", "ep_syn0029", "ep_syn0030", "ep_syn0031", "ep_syn0032"], "type": "multi", "note": "RAG系统优化涉及多个子话题"}
+{"query": "你们有没有讨论过机器学习模型的A/B测试方法？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "之前讨论过RAG生成不实信息的问题，比如自己编百分比数据，有提到什么能减少这种情况的办法吗", "mode": "episode", "expect": ["ep_syn0033"], "type": "semantic", "note": "编造数据→生成不实信息/编百分比,问句化处理,规避原文连续短语"}
+{"query": "“仅使用提供的文档片段回答，如果信息不足请回答‘无法根据现有信息回答’”", "mode": "detail", "expect": ["ep_syn0033"], "type": "verbatim", "note": "原文中具体的强约束指令示例,逐字引用,区分度高"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0033"], "type": "concept", "note": "原文节点概念,直接作为查询词"}
+{"query": "编造", "mode": "detail", "expect": ["ep_syn0033"], "type": "short", "note": "两字对抗,原文中出现的动词"}
+{"query": "有个系统刚上线，用户反馈第一个回答出来特别慢，得等好几秒，是哪块卡住了？", "mode": "episode", "expect": ["ep_syn0034"], "type": "semantic", "note": "第一个回答慢→首次响应慢,五六秒→好几秒,口语化提问"}
+{"query": "HNSW 的 ef_construction 设的200", "mode": "detail", "expect": ["ep_syn0034"], "type": "verbatim", "note": "原文中具体技术参数与数值组合,非常精准"}
+{"query": "分块", "mode": "detail", "expect": ["ep_syn0167", "ep_syn0169", "ep_syn0034"], "type": "short", "note": "两字对抗,多个记忆中均出现的核心操作词"}
+{"query": "我们系统回答“A和B哪个好”这类问题时，总偏心后面的，怎么破？", "mode": "episode", "expect": ["ep_syn0035"], "type": "semantic", "note": "偏向后提到的实体→偏心后面的,哪个好→比较类问题,口语化"}
+{"query": "扰动比例建议在 30% 到 50%", "mode": "detail", "expect": ["ep_syn0035"], "type": "verbatim", "note": "原文中具体技术建议的数值范围,无改动"}
+{"query": "重排算法", "mode": "concept", "expect": ["ep_syn0035"], "type": "concept", "note": "原文节点概念,直接作为查询词"}
+{"query": "处理学术PDF时，老是把公式拆开，你们后来是怎么解决这个头疼问题的？", "mode": "episode", "expect": ["ep_syn0167"], "type": "semantic", "note": "公式和引用拆开→把公式拆开,用pdfplumber分块→解决方案,变换提问角度"}
+{"query": "两栏布局", "mode": "detail", "expect": ["ep_syn0167"], "type": "verbatim", "note": "原文中描述PDF布局的特定词组,逐字出现"}
+{"query": "有没有一起聊过RAG系统的优化？", "mode": "episode", "expect": ["ep_syn0033", "ep_syn0034", "ep_syn0035", "ep_syn0167", "ep_syn0169"], "type": "multi", "note": "所有记忆均围绕RAG系统展开,话题高度一致"}
+{"query": "RAG系统", "mode": "concept", "expect": ["ep_syn0033", "ep_syn0034", "ep_syn0035", "ep_syn0167", "ep_syn0169"], "type": "concept", "note": "所有记忆节点都包含此概念,跨条收集"}
+{"query": "测试时发现生成的内容在文档里根本找不到", "mode": "episode", "expect": ["ep_syn0169"], "type": "semantic", "note": "原文核心问题“幻觉”的另一种表述,复用部分短语以符合verbatim风格，但此处为语义题需重写"}
+{"query": "cross-encoder 重排", "mode": "concept", "expect": ["ep_syn0169"], "type": "concept", "note": "原文节点概念,作为具体技术方案查询"}
+{"query": "阈值", "mode": "detail", "expect": ["ep_syn0169"], "type": "short", "note": "两字对抗,原文中多次出现的关键词"}
+{"query": "RAG系统部署后，运维成本高不高？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容,材料未讨论运营成本问题"}
+{"query": "你们RAG项目用的向量数据库是哪个？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容,材料讨论了索引算法但未指定具体数据库产品"}
+{"query": "分块的时候怎么让意思不被切断？", "mode": "episode", "expect": ["ep_syn0018"], "type": "semantic", "note": "换说法问分块改进"}
+{"query": "段落分块", "mode": "detail", "expect": ["ep_syn0018"], "type": "verbatim", "note": "原文逐字'段落分块'"}
+{"query": "重排响应延迟高，如何改善？", "mode": "episode", "expect": ["ep_syn0019"], "type": "semantic", "note": "延迟高→响应延迟高，提速→改善"}
+{"query": "重排模型", "mode": "detail", "expect": ["ep_syn0019"], "type": "verbatim", "note": "原文逐字'重排模型'"}
+{"query": "机器人编造事实怎么解决？", "mode": "episode", "expect": ["ep_syn0020"], "type": "semantic", "note": "幻觉→编造事实"}
+{"query": "幻觉", "mode": "detail", "expect": ["ep_syn0020"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "分块策略测试后准确率提升小，原因是什么？", "mode": "episode", "expect": ["ep_syn0021"], "type": "semantic", "note": "换说法问分块测试"}
+{"query": "分块", "mode": "detail", "expect": ["ep_syn0018", "ep_syn0021", "ep_syn0022"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "如何把PDF数据集成到我们的系统？", "mode": "episode", "expect": ["ep_syn0022"], "type": "semantic", "note": "PDF处理→集成PDF数据"}
+{"query": "PDF 处理", "mode": "detail", "expect": ["ep_syn0022"], "type": "verbatim", "note": "原文逐字'PDF 处理'"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0018", "ep_syn0021", "ep_syn0022"], "type": "concept", "note": "所有挂'文档分块'概念的记忆"}
+{"query": "重排算法", "mode": "concept", "expect": ["ep_syn0019"], "type": "concept", "note": "挂'重排算法'概念的记忆"}
+{"query": "RAG系统里哪些地方可能让用户觉得慢？", "mode": "episode", "expect": ["ep_syn0019", "ep_syn0020"], "type": "multi", "note": "涉及重排延迟和NLI验证延迟"}
+{"query": "模型微调的具体代码实现有聊过吗？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "用户认证功能怎么设计？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "文档里的代码和解释被切开了，问代码问题时检索效果差，怎么解决？", "mode": "episode", "expect": ["ep_syn0023"], "type": "semantic", "note": "改写分块导致代码解释分离的问题"}
+{"query": "医疗问答RAG的重排步骤让响应时间变慢了，有什么优化思路？", "mode": "episode", "expect": ["ep_syn0024"], "type": "semantic", "note": "重排延迟增加的优化"}
+{"query": "固定大小分块导致长文档上下文断掉，小文档信息太杂，动态分块怎么做？", "mode": "episode", "expect": ["ep_syn0025"], "type": "semantic", "note": "固定分块问题的语义改写"}
+{"query": "调整分块参数后检索召回率提升了15%，具体是怎么调的？", "mode": "episode", "expect": ["ep_syn0026"], "type": "semantic", "note": "分块优化效果的提问"}
+{"query": "cross-encoder重排推理速度慢，每个查询200ms，怎么优化？", "mode": "episode", "expect": ["ep_syn0027"], "type": "semantic", "note": "重排推理速度优化"}
+{"query": "chunk size 800 到 1000", "mode": "detail", "expect": ["ep_syn0023"], "type": "verbatim", "note": "原文逐字数字组合,区分度高"}
+{"query": "bge-reranker-base", "mode": "detail", "expect": ["ep_syn0024"], "type": "verbatim", "note": "原文逐字专有名词"}
+{"query": "BGE-large-zh", "mode": "detail", "expect": ["ep_syn0026"], "type": "verbatim", "note": "原文逐字模型名称"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0023", "ep_syn0026"], "type": "concept", "note": "概念名挂载多条记忆"}
+{"query": "结果重排", "mode": "concept", "expect": ["ep_syn0026", "ep_syn0027"], "type": "concept", "note": "概念名挂载多条记忆"}
+{"query": "推理", "mode": "detail", "expect": ["ep_syn0027"], "type": "short", "note": "两字对抗,原文出现"}
+{"query": "RAG系统的重排部分怎么优化速度和效果？", "mode": "episode", "expect": ["ep_syn0026", "ep_syn0027"], "type": "multi", "note": "rag-11和rag-12都讨论了重排优化"}
+{"query": "有没有聊过向量数据库的索引构建？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "如何用BERT做情感分析？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容,相邻领域"}
+{"query": "RAG机器人有时会瞎编信息，怎么加个检查让输出更靠谱？", "mode": "episode", "expect": ["ep_syn0028"], "type": "semantic", "note": "原文讨论幻觉问题及后处理验证，换说法表达"}
+{"query": "我们的RAG系统回答太慢了，有什么办法提升响应速度？", "mode": "episode", "expect": ["ep_syn0029"], "type": "semantic", "note": "原谈延迟高和缓存优化，换问法"}
+{"query": "RAG项目做了三个月，效果评估怎么样？", "mode": "episode", "expect": ["ep_syn0030"], "type": "semantic", "note": "原文有评估数据和改进目标，改写为询问"}
+{"query": "分块太细导致召回内容断断续续，该怎么调整分块大小？", "mode": "episode", "expect": ["ep_syn0031"], "type": "semantic", "note": "原文具体分块策略问题，语义重述"}
+{"query": "重排模型用了bge-reranker但提升不大，可能是什么原因？", "mode": "episode", "expect": ["ep_syn0032"], "type": "semantic", "note": "原文讨论重排效果不明显的原因，换表达"}
+{"query": "deberta-v3-base-mnli", "mode": "detail", "expect": ["ep_syn0028"], "type": "verbatim", "note": "原文提及的具体模型名，区分度高"}
+{"query": "bge-large-zh", "mode": "detail", "expect": ["ep_syn0031"], "type": "verbatim", "note": "原文Embedding模型名称，逐字匹配"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0028", "ep_syn0030"], "type": "concept", "note": "概念名直接来自nodes，rag-13和rag-15都涉及幻觉治理"}
+{"query": "分块", "mode": "detail", "expect": ["ep_syn0030", "ep_syn0031"], "type": "short", "note": "两字词，原文中出现，rag-15和rag-16都讨论分块"}
+{"query": "RAG系统中幻觉治理的措施有哪些？", "mode": "episode", "expect": ["ep_syn0028", "ep_syn0030"], "type": "multi", "note": "多条记忆围绕幻觉治理话题"}
+{"query": "机器学习模型的训练数据清洗怎么做？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，材料聚焦RAG系统而非训练数据清洗"}
+{"query": "RAG系统回答时老瞎编数据，比如乱给百分比，有啥办法治？", "mode": "episode", "expect": ["ep_syn0033"], "type": "semantic", "note": "语义改写, 幻觉治理问题换说法"}
+{"query": "RAG服务上线后回答慢，监控显示分块和索引构建拖后腿，怎么优化延迟？", "mode": "episode", "expect": ["ep_syn0034"], "type": "semantic", "note": "延迟瓶颈问题换词表达"}
+{"query": "RAG回答比较类问题时总偏向后面那个实体，是不是重排有位置偏见？", "mode": "episode", "expect": ["ep_syn0035"], "type": "semantic", "note": "重排偏见换说法"}
+{"query": "处理学术论文PDF时，分块老把公式拆开，检索效果差，IEEE格式更头疼，咋整？", "mode": "episode", "expect": ["ep_syn0167"], "type": "semantic", "note": "PDF分块问题换视角"}
+{"query": "测试RAG问答机器人发现幻觉多，回答在文档里找不到，是不是分块策略有问题？", "mode": "episode", "expect": ["ep_syn0169"], "type": "semantic", "note": "幻觉检测与分块关系换说法"}
+{"query": "引用验证具体怎么实现？", "mode": "detail", "expect": ["ep_syn0033"], "type": "verbatim", "note": "原文逐字短语'引用验证', 测全文检索"}
+{"query": "HNSW索引参数怎么调？", "mode": "detail", "expect": ["ep_syn0034"], "type": "verbatim", "note": "原文逐字词'HNSW', 区分度高"}
+{"query": "pdfplumber速度慢有更快方案吗？", "mode": "detail", "expect": ["ep_syn0167"], "type": "verbatim", "note": "原文逐字词'pdfplumber', 专有名词"}
+{"query": "分块策略", "mode": "concept", "expect": ["ep_syn0034", "ep_syn0167"], "type": "concept", "note": "节点概念名, 跨条收集挂该概念的记忆"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0033"], "type": "concept", "note": "节点概念名, 只此一条记忆"}
+{"query": "幻觉", "mode": "detail", "expect": ["ep_syn0033", "ep_syn0169"], "type": "short", "note": "两字对抗词, 原文在rag-18和rag-10出现"}
+{"query": "RAG系统在分块和索引方面有哪些优化经验？", "mode": "episode", "expect": ["ep_syn0034", "ep_syn0167", "ep_syn0169"], "type": "multi", "note": "多条记忆围绕分块优化话题"}
+{"query": "有没有讨论过用Redis缓存RAG检索结果？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "RAG系统如何处理视频文档的分块？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "固定分块总断掉上下文，有什么灵活点的方法？", "mode": "episode", "expect": ["ep_syn0018"], "type": "semantic", "note": "换说法描述分块切断语义问题，避免原文措辞"}
+{"query": "512 token", "mode": "detail", "expect": ["ep_syn0018"], "type": "verbatim", "note": "原文逐字数字组合，区分度高"}
+{"query": "重叠", "mode": "detail", "expect": ["ep_syn0018"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "重排那块跑得太慢了，有啥提速的招儿？", "mode": "episode", "expect": ["ep_syn0019"], "type": "semantic", "note": "换词描述重排延迟问题，如'招儿'替代'方法'"}
+{"query": "ColBERT", "mode": "detail", "expect": ["ep_syn0019"], "type": "verbatim", "note": "原文逐字专有名词，区分度高"}
+{"query": "重排算法", "mode": "concept", "expect": ["ep_syn0019"], "type": "concept", "note": "概念名，原文节点中出现"}
+{"query": "机器人老瞎编技术文档里的东西，怎么治？", "mode": "episode", "expect": ["ep_syn0020"], "type": "semantic", "note": "换说法描述幻觉问题，如'瞎编'替代'编造'"}
+{"query": "DeBERTa-v3-base", "mode": "detail", "expect": ["ep_syn0020"], "type": "verbatim", "note": "原文逐字模型名，区分度高"}
+{"query": "NLI 模型", "mode": "concept", "expect": ["ep_syn0020"], "type": "concept", "note": "概念名，原文节点中出现"}
+{"query": "试了新分块，但准确率没怎么涨，可能问题出在哪儿？", "mode": "episode", "expect": ["ep_syn0021"], "type": "semantic", "note": "换说法描述分块测试结果，避免原文连续短语"}
+{"query": "Recall@10", "mode": "detail", "expect": ["ep_syn0021"], "type": "verbatim", "note": "原文逐字指标名，区分度高"}
+{"query": "分块策略效果不佳，有什么通用优化思路？", "mode": "episode", "expect": ["ep_syn0018", "ep_syn0021"], "type": "multi", "note": "多条记忆围绕文档分块话题，笼统问题命中相关记忆"}
+{"query": "得处理一堆PDF文件，有啥好用的库推荐吗？", "mode": "episode", "expect": ["ep_syn0022"], "type": "semantic", "note": "换说法询问PDF处理工具，如'一堆'替代'多个'"}
+{"query": "PyMuPDF", "mode": "detail", "expect": ["ep_syn0022"], "type": "verbatim", "note": "原文逐字库名，区分度高"}
+{"query": "索引", "mode": "detail", "expect": ["ep_syn0018", "ep_syn0019"], "type": "short", "note": "两字对抗，原文多处出现"}
+{"query": "最近在搞图像识别，用什么框架好？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，相邻领域"}
+{"query": "如何设计一个高效的缓存机制？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，技术话题但未涉及"}
+{"query": "我们那个技术文档的代码块老是被拆散，检索相关问题时效果很差，有啥好的分块办法吗？", "mode": "episode", "expect": ["ep_syn0023"], "type": "semantic", "note": "“代码被切开”→“代码块被拆散”，“检索效果差”→“检索相关问题时效果很差”，换词换视角。"}
+{"query": "separators 列表", "mode": "detail", "expect": ["ep_syn0023"], "type": "verbatim", "note": "原文“给你一个优化过的列表”的上下文，指代分隔符列表，是区分度高的原文短语。"}
+{"query": "RAG系统", "mode": "concept", "expect": ["ep_syn0023", "ep_syn0024", "ep_syn0025", "ep_syn0026", "ep_syn0027"], "type": "concept", "note": "“RAG系统”是多个记忆的共同核心概念，挂此概念的每条记忆都需命中。"}
+{"query": "我们医疗问答的RAG重排步骤加上后变慢了，有啥办法优化一下速度？", "mode": "episode", "expect": ["ep_syn0024"], "type": "semantic", "note": "“重排…响应时间…涨到了500ms”→“重排步骤加上后变慢了”，换句式描述同一优化问题。"}
+{"query": "ONNX Runtime", "mode": "detail", "expect": ["ep_syn0024"], "type": "verbatim", "note": "原文明确提到的具体技术栈名词，用于全文检索定位。"}
+{"query": "缓存", "mode": "detail", "expect": ["ep_syn0024"], "type": "short", "note": "两字对抗题，原文讨论了reranker结果的缓存层建议。"}
+{"query": "固定512 token分块，有些文档的上下文被切断了，回答支离破碎，怎么解决？", "mode": "episode", "expect": ["ep_syn0025"], "type": "semantic", "note": "“固定大小…上下文被切断，回答得支离破碎”→换口语化表达，核心问题不变。"}
+{"query": "语义分块", "mode": "concept", "expect": ["ep_syn0025"], "type": "concept", "note": "这是该记忆节点中的一个核心概念名称。"}
+{"query": "我们的客服RAG之前分块后产品手册章节被切碎，调了分块参数和overlap之后，相关性评分从0.65到0.78。", "mode": "episode", "expect": ["ep_syn0026"], "type": "semantic", "note": "复述了优化过程与结果，但核心事件（分块导致章节切碎、调参提升评分）与原文语义一致。"}
+{"query": "相关性评分", "mode": "detail", "expect": ["ep_syn0026"], "type": "verbatim", "note": "原文中描述优化效果的关键量化指标短语。"}
+{"query": "RAG重排用的cross-encoder推理太慢了，每个查询200ms，有啥优化手段？", "mode": "episode", "expect": ["ep_syn0027"], "type": "semantic", "note": "“cross-encoder…推理慢，每个查询要200ms”→“cross-encoder推理太慢了，每个查询200ms”，核心相同。"}
+{"query": "padding", "mode": "detail", "expect": ["ep_syn0027"], "type": "short", "note": "两字对抗题，原文多次讨论了padding相关的优化技巧。"}
+{"query": "有没有聊过怎么用向量检索做文档相似度去重？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，讨论围绕RAG分块与重排，未涉及相似度去重。"}
+{"query": "我们最近在搞一个医疗QA机器人，用到向量检索，想了解一下主流的向量数据库性能对比。", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，虽提及医疗QA和向量检索，但未讨论数据库性能对比。"}
+{"query": "我们客服机器人总胡编乱造，客户投诉多，后来用了什么法子让准确率上去了？", "mode": "episode", "expect": ["ep_syn0028"], "type": "semantic", "note": "幻觉→胡编乱造,验证→法子,全换说法"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0028", "ep_syn0030"], "type": "concept", "note": "节点概念,跨记忆命中"}
+{"query": "circuit breaker 模式", "mode": "detail", "expect": ["ep_syn0029"], "type": "verbatim", "note": "原文逐字英文术语"}
+{"query": "缓存", "mode": "detail", "expect": ["ep_syn0029"], "type": "short", "note": "两字对抗,原文出现"}
+{"query": "ablation study", "mode": "detail", "expect": ["ep_syn0030"], "type": "verbatim", "note": "原文逐字英文术语"}
+{"query": "项目评估下来，各部分贡献多少？成本和收益呢？", "mode": "episode", "expect": ["ep_syn0030"], "type": "semantic", "note": "ablation study→贡献,ROI→收益,改写"}
+{"query": "分块太小导致召回内容不连贯，怎么调整分块大小和重叠？", "mode": "episode", "expect": ["ep_syn0031"], "type": "semantic", "note": "512 token→分块太小,滑动窗口→调整,换词"}
+{"query": "分块策略", "mode": "concept", "expect": ["ep_syn0031"], "type": "concept", "note": "节点概念,仅此记忆"}
+{"query": "cross-encoder/ms-marco-MiniLM-L-6-v2", "mode": "detail", "expect": ["ep_syn0032"], "type": "verbatim", "note": "原文逐字模型名"}
+{"query": "重排用了bge-reranker但效果一般，可能问题出在哪？", "mode": "episode", "expect": ["ep_syn0032"], "type": "semantic", "note": "效果不明显→效果一般,查询质量→问题出在哪,改写"}
+{"query": "RAG问答系统整体优化过程中，有哪些关键改进？", "mode": "episode", "expect": ["ep_syn0028", "ep_syn0029", "ep_syn0030", "ep_syn0031", "ep_syn0032"], "type": "multi", "note": "多条记忆覆盖RAG系统不同方面"}
+{"query": "最近有聊过图像识别模型的部署优化吗？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "有没有讨论过语音识别的误差校正？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "如果RAG的回答总是自己加戏，编些不存在的数据，怎么治？", "mode": "episode", "expect": ["ep_syn0033"], "type": "semantic", "note": "幻觉治理换成控制虚假信息，换词换句式"}
+{"query": "引用验证", "mode": "detail", "expect": ["ep_syn0033"], "type": "verbatim", "note": "原文逐字短语，区分度高"}
+{"query": "幻觉", "mode": "detail", "expect": ["ep_syn0033", "ep_syn0169"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "用户说回答太慢，怎么优化RAG的响应时间？", "mode": "episode", "expect": ["ep_syn0034"], "type": "semantic", "note": "延迟优化换说法为响应时间慢"}
+{"query": "HNSW", "mode": "detail", "expect": ["ep_syn0034"], "type": "verbatim", "note": "专有名词，原文逐字"}
+{"query": "分块策略", "mode": "concept", "expect": ["ep_syn0034", "ep_syn0167"], "type": "concept", "note": "概念名跨记忆共享"}
+{"query": "产品同事反馈说，在比较A和B时，系统老是偏爱B，这怎么解决？", "mode": "episode", "expect": ["ep_syn0035"], "type": "semantic", "note": "位置偏见换成偏向后实体，换表述"}
+{"query": "bge-reranker", "mode": "detail", "expect": ["ep_syn0035"], "type": "verbatim", "note": "原文专有名词，逐字"}
+{"query": "扰动", "mode": "detail", "expect": ["ep_syn0035"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "学术PDF的分块总破坏公式和引用的结构，怎么改进？", "mode": "episode", "expect": ["ep_syn0167"], "type": "semantic", "note": "分块问题换成破坏结构，换词"}
+{"query": "之前聊过RAG的分块策略吗？有哪些优化思路？", "mode": "episode", "expect": ["ep_syn0034", "ep_syn0167", "ep_syn0169"], "type": "multi", "note": "分块策略话题跨多条记忆"}
+{"query": "RAG问答机器人经常产生幻觉，有什么方法可以减少？", "mode": "episode", "expect": ["ep_syn0169"], "type": "semantic", "note": "幻觉治理换成减少幻觉，换说法"}
+{"query": "cross-encoder", "mode": "detail", "expect": ["ep_syn0169"], "type": "verbatim", "note": "技术术语，原文逐字"}
+{"query": "语义分块", "mode": "concept", "expect": ["ep_syn0169"], "type": "concept", "note": "概念名直接对应"}
+{"query": "RAG系统的训练成本怎么估算？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "内存占用在RAG部署中重要吗？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "移动端适配RAG系统有什么注意事项？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "长文档检索效果差，是不是分块方式有问题？", "mode": "episode", "expect": ["ep_syn0018"], "type": "semantic", "note": "语义改写，问分块策略问题"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0018", "ep_syn0021", "ep_syn0022"], "type": "concept", "note": "文档分块概念，跨多条记忆"}
+{"query": "重排模块太慢，有没有更快的模型推荐？", "mode": "episode", "expect": ["ep_syn0019"], "type": "semantic", "note": "语义改写，问重排算法优化"}
+{"query": "ColBERT", "mode": "detail", "expect": ["ep_syn0019"], "type": "verbatim", "note": "专有名词，原文逐字出现"}
+{"query": "回答里老是编造事实，怎么避免这种情况？", "mode": "episode", "expect": ["ep_syn0020"], "type": "semantic", "note": "语义改写，问幻觉治理"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0020"], "type": "concept", "note": "幻觉治理概念"}
+{"query": "分块策略改了但准确率没怎么提升，可能是什么原因？", "mode": "episode", "expect": ["ep_syn0021"], "type": "semantic", "note": "语义改写，问分块测试结果"}
+{"query": "分块", "mode": "detail", "expect": ["ep_syn0018", "ep_syn0021", "ep_syn0022"], "type": "short", "note": "两字对抗，多条记忆出现"}
+{"query": "其他团队用PDF格式数据，我们怎么集成进来？", "mode": "episode", "expect": ["ep_syn0022"], "type": "semantic", "note": "语义改写，问PDF处理"}
+{"query": "PDF", "mode": "detail", "expect": ["ep_syn0022"], "type": "verbatim", "note": "文件格式，原文逐字"}
+{"query": "RAG问答机器人项目进展中遇到了哪些问题？", "mode": "episode", "expect": ["ep_syn0018", "ep_syn0019", "ep_syn0020", "ep_syn0021", "ep_syn0022"], "type": "multi", "note": "项目整体进展，多条记忆涉及"}
+{"query": "模型微调的具体步骤是什么？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "如何进行用户反馈收集？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "之前用 LangChain 的工具分块，发现技术文档里代码和说明老是被切开，问答效果不好，怎么调整能好点？", "mode": "episode", "expect": ["ep_syn0023"], "type": "semantic", "note": "语义改写，问题指向代码文档分块被切断的痛点"}
+{"query": "在 \\n\\n 前加入 `\\n```python\\n` 这类代码块标记", "mode": "detail", "expect": ["ep_syn0023"], "type": "verbatim", "note": "原文逐字出现的具体分隔符配置建议"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0023", "ep_syn0025", "ep_syn0026"], "type": "concept", "note": "跨条收集挂有'文档分块'概念的所有记忆"}
+{"query": "RAG线上环境用bge-reranker-base重排，延迟从300ms到500ms，有什么优化办法？", "mode": "episode", "expect": ["ep_syn0024"], "type": "semantic", "note": "换用'延迟从300ms到500ms'描述性能问题，指向特定模型优化"}
+{"query": "用 `optimum.onnxruntime` 导出并加载", "mode": "detail", "expect": ["ep_syn0024"], "type": "verbatim", "note": "原文逐字出现的库和函数调用方式"}
+{"query": "重排序模型", "mode": "concept", "expect": ["ep_syn0024"], "type": "concept", "note": "挂在'重排序模型'概念下的唯一记忆"}
+{"query": "RAG项目文档分块大小固定效果不好，上下文容易断，有没有更灵活的分块策略？", "mode": "episode", "expect": ["ep_syn0025"], "type": "semantic", "note": "语义改写，针对固定分块导致上下文断裂的问题"}
+{"query": "相似度骤降", "mode": "detail", "expect": ["ep_syn0025"], "type": "verbatim", "note": "原文逐字出现的用于描述语义边界检测的关键词组"}
+{"query": "语义分块", "mode": "concept", "expect": ["ep_syn0025"], "type": "concept", "note": "挂在'语义分块'概念下的记忆"}
+{"query": "客服机器人分块太死板，把PDF手册章节切碎了，怎么改能让分块更智能些？", "mode": "episode", "expect": ["ep_syn0026"], "type": "semantic", "note": "语义改写，将'固定大小'和'语义断开'换成'太死板'和'章节切碎'"}
+{"query": "结果重排", "mode": "concept", "expect": ["ep_syn0026", "ep_syn0027"], "type": "concept", "note": "跨条收集挂有'结果重排'概念的所有记忆"}
+{"query": "cross-encoder重排每个查询200ms，并发高时是瓶颈，怎么加速？", "mode": "episode", "expect": ["ep_syn0027"], "type": "semantic", "note": "语义改写，'每个查询要200ms'换成'每个查询200ms，并发高时是瓶颈'"}
+{"query": "用 dynamic padding 或 padding 到固定长度", "mode": "detail", "expect": ["ep_syn0027"], "type": "verbatim", "note": "原文逐字出现的解决padding问题的方法描述"}
+{"query": "top-5", "mode": "detail", "expect": ["ep_syn0027"], "type": "short", "note": "两字对抗，原文出现的重排top-k具体数值"}
+{"query": "聊过音乐播放列表的生成算法吗？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，询问完全无关的音乐算法话题"}
+{"query": "上次那个机器人瞎编答案被客户骂了，后来是怎么解决这个毛病来着", "mode": "episode", "expect": ["ep_syn0028"], "type": "semantic", "note": "幻觉问题换说法为“瞎编答案”，解决方案换说法为“解决毛病”，无原文连续短语"}
+{"query": "facebook/bart-large-mnli", "mode": "detail", "expect": ["ep_syn0028"], "type": "verbatim", "note": "原文逐字出现的开源模型名称"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0028", "ep_syn0030"], "type": "concept", "note": "跨条收集挂载该概念的全部记忆"}
+{"query": "我们试了", "mode": "detail", "expect": ["ep_syn0028"], "type": "short", "note": "两字对抗，原文出现短语“我们试了”"}
+{"query": "circuit breaker", "mode": "detail", "expect": ["ep_syn0029"], "type": "verbatim", "note": "原文逐字出现的技术模式名称"}
+{"query": "用户说响应太慢，最后是怎么把速度提上来的", "mode": "episode", "expect": ["ep_syn0029"], "type": "semantic", "note": "延迟高→响应慢，缓存+异步→速度提上来，全换说法"}
+{"query": "降级", "mode": "detail", "expect": ["ep_syn0029"], "type": "short", "note": "两字对抗，原文出现“降级策略”"}
+{"query": "ROI", "mode": "detail", "expect": ["ep_syn0030"], "type": "verbatim", "note": "原文逐字出现的投资回报率缩写"}
+{"query": "那个RAG项目最后算下来账，投入产出比怎么样，具体指标都是多少", "mode": "episode", "expect": ["ep_syn0030"], "type": "semantic", "note": "ROI、成本、准确率等指标换说法为“投入产出比”和“具体指标”，无连续短语"}
+{"query": "咱们RAG这块儿的问答机器人效果评估，除了准确率还看了些啥指标", "mode": "episode", "expect": ["ep_syn0028", "ep_syn0029", "ep_syn0030"], "type": "multi", "note": "多条记忆围绕“RAG问答机器人”话题，询问效果评估相关指标"}
+{"query": "工单", "mode": "detail", "expect": ["ep_syn0030"], "type": "short", "note": "两字对抗，原文出现“工单量”"}
+{"query": "分块策略", "mode": "concept", "expect": ["ep_syn0030", "ep_syn0031"], "type": "concept", "note": "跨条收集挂载该概念的全部记忆"}
+{"query": "文档切得太碎导致召回内容不连贯，这个问题后来怎么优化的", "mode": "episode", "expect": ["ep_syn0031"], "type": "semantic", "note": "分块碎、连不成句子→切得太碎、内容不连贯，优化方案（调大分块、加重叠）换说法"}
+{"query": "重叠", "mode": "detail", "expect": ["ep_syn0031"], "type": "short", "note": "两字对抗，原文出现“overlap”和“重叠”"}
+{"query": "重排算法", "mode": "concept", "expect": ["ep_syn0032"], "type": "concept", "note": "原文记忆节点明确列出的概念"}
+{"query": "用了bge-reranker效果没啥提升，这可能是什么原因，又该怎么试", "mode": "episode", "expect": ["ep_syn0032"], "type": "semantic", "note": "直接提及模型名，但原因和方案换说法为“没啥提升”和“怎么试”，避免复制原文分析句"}
+{"query": "阈值", "mode": "detail", "expect": ["ep_syn0032"], "type": "short", "note": "两字对抗，原文出现“阈值设的有问题”"}
+{"query": "我们RAG机器人的知识库数据是从哪里采集和清洗的", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，所有记忆均未讨论数据采集与清洗流程"}
+{"query": "RAG系统前端对话界面怎么设计才让用户用着更顺手", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，所有记忆均未涉及用户界面设计"}
+{"query": "这套RAG方案除了中文，支持其他语言吗，有没有做多语言优化", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，所有记忆均未讨论多语言支持"}
+{"query": "RAG 回答时瞎编数据怎么解决？", "mode": "episode", "expect": ["ep_syn0033"], "type": "semantic", "note": "幻觉→瞎编数据，治理→解决，全换说法"}
+{"query": "引用验证", "mode": "detail", "expect": ["ep_syn0033"], "type": "verbatim", "note": "原文逐字术语，区分度高"}
+{"query": "RAG 首次响应慢得离谱，怎么优化？", "mode": "episode", "expect": ["ep_syn0034"], "type": "semantic", "note": "延迟→响应慢，分块和索引优化→怎么优化，换表述"}
+{"query": "HNSW", "mode": "detail", "expect": ["ep_syn0034"], "type": "verbatim", "note": "原文专有名词，索引算法名"}
+{"query": "延迟", "mode": "detail", "expect": ["ep_syn0034"], "type": "short", "note": "两字对抗，原文核心问题"}
+{"query": "比较问题回答总偏向后面那个，怎么办？", "mode": "episode", "expect": ["ep_syn0035"], "type": "semantic", "note": "位置偏见→总偏向后面，重排权重→怎么办，改写"}
+{"query": "位置偏见", "mode": "detail", "expect": ["ep_syn0035"], "type": "verbatim", "note": "原文独特短语，描述问题"}
+{"query": "处理学术PDF分块总切断公式，有啥好办法？", "mode": "episode", "expect": ["ep_syn0167"], "type": "semantic", "note": "分块老是把公式拆开→总切断，解决方案→好办法"}
+{"query": "分块策略", "mode": "concept", "expect": ["ep_syn0167", "ep_syn0034"], "type": "concept", "note": "概念跨记忆，rag-09 和 rag-19 都挂此概念"}
+{"query": "RAG 机器人回答不相关，怎么提升效果？", "mode": "episode", "expect": ["ep_syn0169"], "type": "semantic", "note": "检索结果相关性不高→回答不相关，提升相关性→提升效果"}
+{"query": "语义分块", "mode": "concept", "expect": ["ep_syn0169"], "type": "concept", "note": "概念名，只有 rag-10 有此节点"}
+{"query": "分块策略有什么好的实践？", "mode": "episode", "expect": ["ep_syn0167", "ep_syn0034"], "type": "multi", "note": "两条记忆都讨论分块策略，一个学术PDF，一个延迟优化"}
+{"query": "强化学习在游戏中的应用", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，话题不相关"}
+{"query": "图像识别的最新进展", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，相邻领域"}
+{"query": "我们那个问答机器人的文档分块老是把意思给切断了，有没有什么更好的分法？", "mode": "episode", "expect": ["ep_syn0018"], "type": "semantic", "note": "核心问题（分块切断语义）换说法为'把意思给切断了'，对应动态分块的讨论"}
+{"query": "用NLTK分句", "mode": "detail", "expect": ["ep_syn0018"], "type": "verbatim", "note": "原文逐字出现的短语，区分度高"}
+{"query": "元数据", "mode": "detail", "expect": ["ep_syn0018"], "type": "short", "note": "两字对抗题，原文明确提及保留'元数据'"}
+{"query": "重排模块太慢了，用户都在抱怨，有什么办法能让它快起来？", "mode": "episode", "expect": ["ep_syn0019"], "type": "semantic", "note": "延迟高/慢→抱怨，cross-encoder→快起来，换词不换意"}
+{"query": "bert-base-cross-encoder", "mode": "detail", "expect": ["ep_syn0019"], "type": "verbatim", "note": "原文逐字出现的专有名词组合"}
+{"query": "ColBERT", "mode": "concept", "expect": ["ep_syn0019"], "type": "concept", "note": "原文作为新方案提出的核心概念名"}
+{"query": "NLI 模型", "mode": "concept", "expect": ["ep_syn0020"], "type": "concept", "note": "原文节点概念，用于事实检查"}
+{"query": "DeBERTa-v3-base", "mode": "detail", "expect": ["ep_syn0020"], "type": "verbatim", "note": "原文逐字出现的具体模型名"}
+{"query": "机器人老是瞎编事实，这可咋整？", "mode": "episode", "expect": ["ep_syn0020"], "type": "semantic", "note": "产生幻觉→瞎编事实，口语化改写"}
+{"query": "新的分块方法试了，效果提升不大，该怎么分析？", "mode": "episode", "expect": ["ep_syn0021"], "type": "semantic", "note": "检索准确率只提升2%→效果提升不大，分析→评估指标和案例"}
+{"query": "MRR和Recall@10", "mode": "detail", "expect": ["ep_syn0021"], "type": "verbatim", "note": "原文逐字出现的评估指标名"}
+{"query": "其他团队想用我们的系统，但他们的文件是PDF格式，这怎么弄？", "mode": "episode", "expect": ["ep_syn0022"], "type": "semantic", "note": "集成/数据格式是PDF→文件是PDF格式，问解决方案"}
+{"query": "PyMuPDF或pdfplumber", "mode": "detail", "expect": ["ep_syn0022"], "type": "verbatim", "note": "原文逐字出现的工具库名"}
+{"query": "文档分块相关的讨论都涉及了哪些方面？", "mode": "episode", "expect": ["ep_syn0018", "ep_syn0021"], "type": "multi", "note": "rag-01和rag-04都围绕文档分块，前者讲策略选择，后者讲测试反馈"}
+{"query": "关于重排模块的讨论", "mode": "episode", "expect": ["ep_syn0019", "ep_syn0021"], "type": "multi", "note": "rag-02主讲重排算法优化，rag-04提及了默认cross-encoder的延迟问题"}
+{"query": "RAG问答机器人的商业盈利模式是怎样的？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，材料集中于技术实现，未涉及商业模式"}
+{"query": "有没有讨论过这个项目在市场推广方面的计划？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，材料未涉及市场推广或运营计划"}
+{"query": "技术文档里代码块和注释经常被切分，导致问代码时检索效果不好，怎么解决的", "mode": "episode", "expect": ["ep_syn0023"], "type": "semantic", "note": "换说法：代码和解释→代码块和注释、检索效果差→检索效果不好"}
+{"query": "RecursiveCharacterTextSplitter", "mode": "detail", "expect": ["ep_syn0023", "ep_syn0026"], "type": "verbatim", "note": "原文逐字出现的专有名词，区分度高"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0023", "ep_syn0026"], "type": "concept", "note": "概念名，挂在rag-06和rag-11"}
+{"query": "医疗问答的重排序步骤太慢了，从300毫秒涨到500毫秒，怎么加速", "mode": "episode", "expect": ["ep_syn0024"], "type": "semantic", "note": "重排序延迟优化，换用口语化描述"}
+{"query": "bge-reranker-base", "mode": "detail", "expect": ["ep_syn0024"], "type": "verbatim", "note": "原文逐字专有名词，唯一匹配"}
+{"query": "医疗", "mode": "detail", "expect": ["ep_syn0024"], "type": "short", "note": "两字中文词，原文出现，唯一匹配"}
+{"query": "固定大小分块效果不稳定，长文档上下文被切断，小文档信息太杂，怎么动态分块", "mode": "episode", "expect": ["ep_syn0025"], "type": "semantic", "note": "换说法：固定分块→固定大小、语义边界→动态分块"}
+{"query": "Unstructured.io", "mode": "detail", "expect": ["ep_syn0025"], "type": "verbatim", "note": "原文逐字出现的库名，区分度高"}
+{"query": "客服问答系统的PDF文档分块后章节被切碎，语义不连贯，怎么优化分块参数", "mode": "episode", "expect": ["ep_syn0026"], "type": "semantic", "note": "换说法：PDF文档分块→PDF文档、优化分块参数→调整参数"}
+{"query": "结果重排", "mode": "concept", "expect": ["ep_syn0026", "ep_syn0027"], "type": "concept", "note": "概念名，挂在rag-11和rag-12"}
+{"query": "cross-encoder重排每个查询要200毫秒，推理太慢，有什么提速技巧", "mode": "episode", "expect": ["ep_syn0027"], "type": "semantic", "note": "换说法：推理慢→推理太慢、提速技巧→优化方法"}
+{"query": "文档分块有哪些优化方法", "mode": "episode", "expect": ["ep_syn0023", "ep_syn0025", "ep_syn0026"], "type": "multi", "note": "笼统问题，多条记忆讨论文档分块优化"}
+{"query": "向量数据库的索引优化策略", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "如何训练自定义的文本嵌入模型", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "之前客服抱怨机器人胡说八道，你们是怎么处理幻觉问题的？", "mode": "episode", "expect": ["ep_syn0028"], "type": "semantic", "note": "改写编造事实和幻觉治理，换用口语化表达"}
+{"query": "误报率高", "mode": "detail", "expect": ["ep_syn0028"], "type": "verbatim", "note": "原文逐字连续出现，区分度高"}
+{"query": "用户抱怨响应慢，你们后来加缓存了吗？效果怎么样？", "mode": "episode", "expect": ["ep_syn0029"], "type": "semantic", "note": "将延迟优化改为响应慢，缓存策略具体化"}
+{"query": "RAG项目做了三个月，最后效果怎么样？成本呢？", "mode": "episode", "expect": ["ep_syn0030"], "type": "semantic", "note": "评估问题改写，询问效果和成本"}
+{"query": "分块太小导致召回片段不完整，怎么调整分块大小？", "mode": "episode", "expect": ["ep_syn0031"], "type": "semantic", "note": "分块碎片化问题换说法，调整分块大小"}
+{"query": "用了bge-reranker但效果不明显，可能是什么原因？", "mode": "episode", "expect": ["ep_syn0032"], "type": "semantic", "note": "重排效果问题改写"}
+{"query": "bge-large-zh", "mode": "detail", "expect": ["ep_syn0031"], "type": "verbatim", "note": "原文专有名词逐字出现，区分度高"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0028", "ep_syn0030"], "type": "concept", "note": "概念名直接命中，跨记忆"}
+{"query": "分块策略", "mode": "concept", "expect": ["ep_syn0031"], "type": "concept", "note": "概念名直接命中"}
+{"query": "重叠", "mode": "detail", "expect": ["ep_syn0031"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "RAG问答系统有哪些常见的优化方向？", "mode": "episode", "expect": ["ep_syn0028", "ep_syn0029", "ep_syn0030", "ep_syn0031", "ep_syn0032"], "type": "multi", "note": "所有记忆都涉及RAG系统优化，笼统问题命中所有"}
+{"query": "聊天机器人怎么设计更友好的用户界面？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，材料聚焦RAG后端优化"}
+{"query": "机器学习模型的训练数据标注流程是什么？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，未讨论数据标注"}
+{"query": "上次聊到RAG系统会编造数据，有什么办法能避免这种情况？", "mode": "episode", "expect": ["ep_syn0033"], "type": "semantic", "note": "语义改写，幻觉治理问题换说法"}
+{"query": "RAG服务第一个响应特别慢，怎么优化检索延迟？", "mode": "episode", "expect": ["ep_syn0034"], "type": "semantic", "note": "延迟优化，换词表达慢响应"}
+{"query": "在比较问题上，RAG回答总是偏向最后一个选项，有解决办法吗？", "mode": "episode", "expect": ["ep_syn0035"], "type": "semantic", "note": "位置偏见问题，口语化改写"}
+{"query": "处理PDF论文时，分块经常把公式拆开，怎么改进分块策略？", "mode": "episode", "expect": ["ep_syn0167"], "type": "semantic", "note": "学术PDF分块问题，换视角描述"}
+{"query": "RAG问答机器人生成的内容在文档里找不到，怎么减少这种幻觉？", "mode": "episode", "expect": ["ep_syn0169"], "type": "semantic", "note": "幻觉检测，避免原文短语"}
+{"query": "引用验证", "mode": "detail", "expect": ["ep_syn0033"], "type": "verbatim", "note": "原文逐字专有名词，区分度高"}
+{"query": "ef_construction", "mode": "detail", "expect": ["ep_syn0034"], "type": "verbatim", "note": "原文专有名词参数，逐字出现"}
+{"query": "分块策略", "mode": "concept", "expect": ["ep_syn0167", "ep_syn0169", "ep_syn0034"], "type": "concept", "note": "概念跨多条记忆，挂着该概念的所有id"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0033"], "type": "concept", "note": "nodes中的概念名，原文相关"}
+{"query": "幻觉", "mode": "detail", "expect": ["ep_syn0033"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "有没有聊过分块大小对RAG性能的影响？", "mode": "episode", "expect": ["ep_syn0034", "ep_syn0167", "ep_syn0169"], "type": "multi", "note": "多条记忆涉及分块策略，笼统问题"}
+{"query": "最近在健身，有什么推荐的蛋白质补充剂吗？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，相邻领域话题"}
+{"query": "去日本旅行需要准备什么签证材料？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，完全不相关话题"}
+{"query": "之前咱们聊过文档分块，长文档的检索效果总是不理想，有什么办法能改善吗", "mode": "episode", "expect": ["ep_syn0018"], "type": "semantic", "note": "将固定分块导致检索差的核心内容，换为询问改善办法的自然问法"}
+{"query": "索引大小膨胀", "mode": "detail", "expect": ["ep_syn0018"], "type": "verbatim", "note": "原文逐字出现，是讨论重叠窗口时的关键词"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0018", "ep_syn0021"], "type": "concept", "note": "概念节点，挂此概念的所有记忆均需命中"}
+{"query": "咱们那个机器人的排序模块响应太慢了，有更快的方案吗", "mode": "episode", "expect": ["ep_syn0019"], "type": "semantic", "note": "重排→排序，延迟高→响应太慢，换词不换意"}
+{"query": "bert-base-cross-encoder", "mode": "detail", "expect": ["ep_syn0019"], "type": "verbatim", "note": "原文逐字出现，是当时讨论的重排模型名"}
+{"query": "重排算法", "mode": "concept", "expect": ["ep_syn0019"], "type": "concept", "note": "概念节点，挂此概念的记忆"}
+{"query": "用户说机器人瞎编事实，这个问题之前怎么讨论的来着", "mode": "episode", "expect": ["ep_syn0020"], "type": "semantic", "note": "幻觉→瞎编事实，将治理讨论转为用户反馈视角"}
+{"query": "NLI 模型", "mode": "detail", "expect": ["ep_syn0020"], "type": "verbatim", "note": "原文逐字出现，是解决幻觉的关键工具"}
+{"query": "分块策略改了之后效果提升不大，该怎么分析这个情况", "mode": "episode", "expect": ["ep_syn0021"], "type": "semantic", "note": "准确率提升不如预期→提升不大，转向寻求分析方法"}
+{"query": "噪声", "mode": "detail", "expect": ["ep_syn0021"], "type": "short", "note": "两字对抗，原文‘引入噪声’一词"}
+{"query": "怎么让其他团队的数据，比如PDF，能顺利接到咱们的问答系统里", "mode": "episode", "expect": ["ep_syn0022"], "type": "semantic", "note": "外部团队集成PDF→其他团队数据接入，换说法"}
+{"query": "PyMuPDF 或 pdfplumber", "mode": "detail", "expect": ["ep_syn0022"], "type": "verbatim", "note": "原文逐字出现，是推荐的PDF解析工具"}
+{"query": "PDF 处理", "mode": "concept", "expect": ["ep_syn0022"], "type": "concept", "note": "概念节点，挂此概念的记忆"}
+{"query": "文档分块这个功能最近有什么进展或者调整吗", "mode": "episode", "expect": ["ep_syn0018", "ep_syn0021"], "type": "multi", "note": "询问同一话题(文档分块)的整体进展，覆盖多条相关记忆"}
+{"query": "之前有没有聊过怎么给机器人设计一个好看的用户界面", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，所有记忆均未涉及界面设计"}
+{"query": "咱们的机器人支持用日语提问吗？语言适配是怎么做的", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，所有记忆均未涉及多语言支持"}
+{"query": "文档分块时代码和解释被切开，检索效果差，后来怎么改进分隔符的？", "mode": "episode", "expect": ["ep_syn0023"], "type": "semantic", "note": "分块问题语义改写，换说法表达"}
+{"query": "800 到 1000 字符", "mode": "detail", "expect": ["ep_syn0023"], "type": "verbatim", "note": "原文逐字数字组合，区分度高"}
+{"query": "医疗问答系统加了重排后响应变慢，有哪些优化延迟的方法？", "mode": "episode", "expect": ["ep_syn0024"], "type": "semantic", "note": "重排延迟优化语义改写，避免原文短语"}
+{"query": "bge-reranker-base", "mode": "detail", "expect": ["ep_syn0024"], "type": "verbatim", "note": "原文专有名词，逐字连续出现"}
+{"query": "固定大小分块导致文档语义断开，怎么实现基于边界的动态分块？", "mode": "episode", "expect": ["ep_syn0025"], "type": "semantic", "note": "分块策略语义改写，换视角表达"}
+{"query": "分块", "mode": "detail", "expect": ["ep_syn0025"], "type": "short", "note": "两字对抗，原文出现多次"}
+{"query": "客服问答机器人分块后检索召回率提升了，具体怎么设置分块参数和重排的？", "mode": "episode", "expect": ["ep_syn0026"], "type": "semantic", "note": "分块和重排优化语义改写，换词表达"}
+{"query": "相关性评分从 0.65 到 0.78", "mode": "detail", "expect": ["ep_syn0026"], "type": "verbatim", "note": "原文数字组合，区分度高"}
+{"query": "重排序模型在并发高时推理慢，如何通过参数调整加速？", "mode": "episode", "expect": ["ep_syn0027"], "type": "semantic", "note": "重排加速语义改写，避免原文措辞"}
+{"query": "重排序模型", "mode": "concept", "expect": ["ep_syn0024", "ep_syn0026", "ep_syn0027"], "type": "concept", "note": "概念名直接使用，跨记忆收集"}
+{"query": "RAG 系统中文档分块有哪些常见优化策略？", "mode": "episode", "expect": ["ep_syn0023", "ep_syn0025", "ep_syn0026"], "type": "multi", "note": "多条记忆围绕文档分块话题"}
+{"query": "最近有没有讨论过 Transformer 模型的预训练技巧？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "如何优化图像识别模型的训练速度？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "客服说机器人回答瞎编，怎么治这个毛病", "mode": "episode", "expect": ["ep_syn0028"], "type": "semantic", "note": "幻觉治理→治瞎编的毛病，换口语化问法"}
+{"query": "置信度阈值设为 0.8 以上", "mode": "detail", "expect": ["ep_syn0028"], "type": "verbatim", "note": "原文逐字数字组合，关键参数"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0028", "ep_syn0030"], "type": "concept", "note": "节点概念，跨rag-13与rag-15两份记忆"}
+{"query": "系统老卡，有没有优化响应速度的法子", "mode": "episode", "expect": ["ep_syn0029"], "type": "semantic", "note": "延迟高、响应慢→系统老卡，优化→法子"}
+{"query": "RAG 问答机器人", "mode": "concept", "expect": ["ep_syn0028", "ep_syn0029", "ep_syn0030"], "type": "concept", "note": "核心节点概念，挂在前三条记忆上"}
+{"query": "降级", "mode": "detail", "expect": ["ep_syn0029"], "type": "short", "note": "两字对抗，原文出现，指降级策略"}
+{"query": "这项目做完，最后指标怎么样，客户买不买账", "mode": "episode", "expect": ["ep_syn0030"], "type": "semantic", "note": "整体效果评估、客户满意度→指标、买不买账"}
+{"query": "测试集 500 问题", "mode": "detail", "expect": ["ep_syn0030"], "type": "verbatim", "note": "原文逐字数字组合，评估基准"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0030", "ep_syn0031"], "type": "concept", "note": "节点概念，跨rag-15与rag-16两份记忆"}
+{"query": "我那分块太碎了，召回的内容都不连贯，咋整", "mode": "episode", "expect": ["ep_syn0031"], "type": "semantic", "note": "碎片化召回→太碎，不连贯，咋整→怎么办"}
+{"query": "分句", "mode": "detail", "expect": ["ep_syn0031"], "type": "short", "note": "两字对抗，原文出现，指中文文档分块前的处理"}
+{"query": "512 token", "mode": "detail", "expect": ["ep_syn0031"], "type": "verbatim", "note": "原文逐字尺寸数字，分块关键参数"}
+{"query": "试了个重排模型，但回答质量没明显变好，为啥", "mode": "episode", "expect": ["ep_syn0032"], "type": "semantic", "note": "提升不明显→没明显变好，问原因"}
+{"query": "nDCG@10", "mode": "detail", "expect": ["ep_syn0032"], "type": "verbatim", "note": "原文逐字评估指标，专有名词"}
+{"query": "系统性能这块，缓存和降级这些优化手段怎么样", "mode": "episode", "expect": ["ep_syn0029", "ep_syn0032"], "type": "multi", "note": "笼统问题关联系统优化，命中架构缓存降级与重排优化两条记忆"}
+{"query": "有没有针对老年用户优化前端的字体大小？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，前端UI设计与现有技术记忆无关"}
+{"query": "我们系统的用户数据隐私是怎么保障的？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，数据安全与现有技术讨论无关"}
+{"query": "RAG生成时老是自己编数据，有啥办法能治这毛病？", "mode": "episode", "expect": ["ep_syn0033"], "type": "semantic", "note": "幻觉→编数据、治理→治毛病，全换口语化表达"}
+{"query": "引用验证", "mode": "detail", "expect": ["ep_syn0033"], "type": "verbatim", "note": "原文核心机制，逐字连续"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0033"], "type": "concept", "note": "节点概念，记忆中直接提及"}
+{"query": "我们RAG首答巨慢，监控说是分块和索引那步拖了后腿，怎么搞快点？", "mode": "episode", "expect": ["ep_syn0034"], "type": "semantic", "note": "延迟→慢、瓶颈→拖后腿，换成用户口吻"}
+{"query": "HNSW", "mode": "detail", "expect": ["ep_syn0034"], "type": "verbatim", "note": "索引算法原文逐字"}
+{"query": "分块那块儿有什么优化思路不？", "mode": "episode", "expect": ["ep_syn0034", "ep_syn0167"], "type": "multi", "note": "两条记忆都讨论分块策略，笼统问题触发多条"}
+{"query": "RAG回答比较题时老是偏向后一个选项，怎么纠偏？", "mode": "episode", "expect": ["ep_syn0035"], "type": "semantic", "note": "位置偏见→偏向后一个，扰动→纠偏"}
+{"query": "bge-reranker", "mode": "detail", "expect": ["ep_syn0035"], "type": "verbatim", "note": "原文提及的具体模型名"}
+{"query": "偏见", "mode": "detail", "expect": ["ep_syn0035"], "type": "short", "note": "两字对抗，原文出现“位置偏见”"}
+{"query": "处理IEEE论文PDF时分块老把公式和引用拆开，咋整？", "mode": "episode", "expect": ["ep_syn0167"], "type": "semantic", "note": "学术PDF→IEEE论文、破坏语义→拆开，具体化问题"}
+{"query": "pdfplumber", "mode": "detail", "expect": ["ep_syn0167"], "type": "verbatim", "note": "原文逐字工具名"}
+{"query": "分块策略", "mode": "concept", "expect": ["ep_syn0034", "ep_syn0167"], "type": "concept", "note": "节点概念，挂在多条记忆上"}
+{"query": "语义分块计算成本高，RAG效果还是不理想，除了加重排还有啥招？", "mode": "episode", "expect": ["ep_syn0169"], "type": "semantic", "note": "语义分块→计算成本高，幻觉检测→还有啥招"}
+{"query": "SentenceWindowNodeParser", "mode": "detail", "expect": ["ep_syn0169"], "type": "verbatim", "note": "原文提及的具体工具名"}
+{"query": "阈值", "mode": "detail", "expect": ["ep_syn0169"], "type": "short", "note": "两字对抗，原文出现“阈值过滤”"}
+{"query": "我们RAG的回答在手机端显示有乱码吗？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "代码部署到生产环境后，监控系统有没有报警？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "用户数据在RAG检索时有没有隐私泄露风险？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "前端界面怎么设计才能让用户更快找到答案？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "之前文档分块用固定大小效果不好，后来改用什么方法？", "mode": "episode", "expect": ["ep_syn0018"], "type": "semantic", "note": "改写固定大小分块为动态分块，换词不重复原文"}
+{"query": "NLTK 分句", "mode": "detail", "expect": ["ep_syn0018"], "type": "verbatim", "note": "原文逐字出现'NLTK 分句'"}
+{"query": "用户抱怨重排模块响应慢，怎么优化？", "mode": "episode", "expect": ["ep_syn0019"], "type": "semantic", "note": "改写重排模块延迟为响应慢，优化方法换说法"}
+{"query": "ColBERT", "mode": "detail", "expect": ["ep_syn0019"], "type": "verbatim", "note": "原文专有名词'ColBERT'"}
+{"query": "机器人经常编造事实，有什么办法减少这种情况？", "mode": "episode", "expect": ["ep_syn0020"], "type": "semantic", "note": "幻觉→编造事实，NLI验证→办法减少"}
+{"query": "NLI 模型", "mode": "detail", "expect": ["ep_syn0020"], "type": "verbatim", "note": "原文逐字'NLI 模型'"}
+{"query": "新分块策略测试后准确率提升大吗？", "mode": "episode", "expect": ["ep_syn0021"], "type": "semantic", "note": "改写检索准确率只提升2%为提升大吗，换句式"}
+{"query": "测试", "mode": "detail", "expect": ["ep_syn0021"], "type": "short", "note": "两字对抗,原文出现'测试'"}
+{"query": "其他团队发来的PDF文件怎么处理才能集成？", "mode": "episode", "expect": ["ep_syn0022"], "type": "semantic", "note": "改写集成PDF数据为发来的文件，处理方法换说法"}
+{"query": "PDF处理", "mode": "concept", "expect": ["ep_syn0022"], "type": "concept", "note": "概念名直接查询,仅rag-05挂此概念"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0018", "ep_syn0021"], "type": "concept", "note": "概念名直接查询,挂此概念的记忆均命中"}
+{"query": "重排算法", "mode": "concept", "expect": ["ep_syn0019"], "type": "concept", "note": "概念名直接查询,仅rag-02挂此概念"}
+{"query": "幻觉", "mode": "detail", "expect": ["ep_syn0020"], "type": "short", "note": "两字对抗,原文出现'幻觉'"}
+{"query": "文档分块方面，我们讨论了哪些改进？", "mode": "episode", "expect": ["ep_syn0018", "ep_syn0021"], "type": "multi", "note": "多条记忆围绕文档分块改进"}
+{"query": "有没有讨论过聊天机器人前端界面的优化？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "RAG系统的数据存储安全怎么保障？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容,材料未涉及安全话题"}
+{"query": "之前分块总把代码和注释切开，怎么调整才能让代码检索更准？", "mode": "episode", "expect": ["ep_syn0023"], "type": "semantic", "note": "分块切开代码→代码和注释切开，检索效果差→检索更准，全换说法"}
+{"query": "RecursiveCharacterTextSplitter", "mode": "detail", "expect": ["ep_syn0023", "ep_syn0026"], "type": "verbatim", "note": "原文逐字出现，专有名词，区分度高"}
+{"query": "文档分块", "mode": "concept", "expect": ["ep_syn0023", "ep_syn0026"], "type": "concept", "note": "概念名直接匹配，跨条记忆"}
+{"query": "重排模型太慢，怎么优化才能不影响准确性？", "mode": "episode", "expect": ["ep_syn0024"], "type": "semantic", "note": "bge-reranker-base延迟增加→重排模型太慢，优化路径→怎么优化，换说法"}
+{"query": "bge-reranker-base", "mode": "detail", "expect": ["ep_syn0024"], "type": "verbatim", "note": "原文逐字专有名词，区分度高"}
+{"query": "延迟", "mode": "detail", "expect": ["ep_syn0024"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "文档分块大小固定效果不好，有没有更智能的分块方法？", "mode": "episode", "expect": ["ep_syn0025"], "type": "semantic", "note": "固定大小分块不稳定→效果不好，动态分块→更智能的分块方法，换说法"}
+{"query": "Unstructured", "mode": "concept", "expect": ["ep_syn0025"], "type": "concept", "note": "概念名直接匹配"}
+{"query": "PDF文档切分后语义断开，怎么设置参数能让检索更连贯？", "mode": "episode", "expect": ["ep_syn0026"], "type": "semantic", "note": "语义断开→PDF文档切分后语义断开，参数调整→怎么设置参数，换说法"}
+{"query": "结果重排", "mode": "concept", "expect": ["ep_syn0026", "ep_syn0027"], "type": "concept", "note": "概念名直接匹配，跨条记忆"}
+{"query": "重排步骤太耗时，怎么调整能加快速度而不损失太多精度？", "mode": "episode", "expect": ["ep_syn0027"], "type": "semantic", "note": "cross-encoder推理慢→重排步骤太耗时，减少top-k→调整，换说法"}
+{"query": "重排", "mode": "detail", "expect": ["ep_syn0024", "ep_syn0026", "ep_syn0027"], "type": "short", "note": "两字对抗，原文出现"}
+{"query": "有没有聊过文档分块的优化技巧？", "mode": "episode", "expect": ["ep_syn0023", "ep_syn0025", "ep_syn0026"], "type": "multi", "note": "多条记忆围绕文档分块话题"}
+{"query": "如何微调BGE模型来提升领域特定检索？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "分布式部署RAG系统的负载均衡策略？", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容"}
+{"query": "咱们那个RAG机器人老是胡编乱造，后来是怎么搞定的", "mode": "episode", "expect": ["ep_syn0028"], "type": "semantic", "note": "幻觉治理→胡编乱造，搞定→解决，全换说法且口语化"}
+{"query": "deberta-v3-base-mnli", "mode": "detail", "expect": ["ep_syn0028"], "type": "verbatim", "note": "原文连续出现的开源模型名，高度区分"}
+{"query": "误报", "mode": "detail", "expect": ["ep_syn0028"], "type": "short", "note": "原文出现的两字词，专有术语"}
+{"query": "RAG系统响应太慢，用户都在抱怨了，后来怎么优化的", "mode": "episode", "expect": ["ep_syn0029"], "type": "semantic", "note": "延迟高→响应慢、用户抱怨，将对话场景转化为用户新问题"}
+{"query": "circuit breaker", "mode": "detail", "expect": ["ep_syn0029"], "type": "verbatim", "note": "原文逐字出现的技术术语，区分度高"}
+{"query": "延迟", "mode": "detail", "expect": ["ep_syn0029"], "type": "short", "note": "原文出现的两字核心指标"}
+{"query": "做了三个月的RAG项目，最终效果数据怎么样？", "mode": "episode", "expect": ["ep_syn0030"], "type": "semantic", "note": "整体效果评估→最终效果数据，换种问法"}
+{"query": "recall@10", "mode": "detail", "expect": ["ep_syn0030"], "type": "verbatim", "note": "原文逐字出现的评估指标，精确且专有"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0028", "ep_syn0030"], "type": "concept", "note": "跨条共享的核心概念，需命中所有关联记忆"}
+{"query": "分块太小，召回的段落很碎，句子都不完整，有什么办法", "mode": "episode", "expect": ["ep_syn0031"], "type": "semantic", "note": "分块尺寸小→分块太小、段落碎→段落很碎，换词改述"}
+{"query": "bge-large-zh", "mode": "detail", "expect": ["ep_syn0031"], "type": "verbatim", "note": "原文逐字出现的模型名，区分度极高"}
+{"query": "分块", "mode": "detail", "expect": ["ep_syn0031"], "type": "short", "note": "原文出现的两字核心主题词"}
+{"query": "RAG系统里那个重排的环节，试了bge-reranker觉得没啥用，可能哪里有问题", "mode": "episode", "expect": ["ep_syn0032"], "type": "semantic", "note": "重排效果不明显→没啥用，换口语化表述提问"}
+{"query": "cross-encoder/ms-marco-MiniLM-L-6-v2", "mode": "detail", "expect": ["ep_syn0032"], "type": "verbatim", "note": "原文逐字出现的完整模型名，唯一性高"}
+{"query": "阈值", "mode": "detail", "expect": ["ep_syn0032"], "type": "short", "note": "原文出现的两字核心配置词"}
+{"query": "咱们RAG的整体架构是怎么设计和优化的？", "mode": "episode", "expect": ["ep_syn0029", "ep_syn0030", "ep_syn0031", "ep_syn0032"], "type": "multi", "note": "问题较笼统，涉及系统集成、评估、分块、重排等多个环节，命中所有相关记忆"}
+{"query": "有没有聊过向量数据库的选型和配置", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，话题相关但未讨论"}
+{"query": "之前RAG回答老是瞎编数据，怎么让它只看文档说话", "mode": "episode", "expect": ["ep_syn0033"], "type": "semantic", "note": "幻觉→瞎编数据，引用验证→只看文档说话"}
+{"query": "仅使用提供的文档片段回答", "mode": "detail", "expect": ["ep_syn0033"], "type": "verbatim", "note": "原文逐字引用的强约束指令"}
+{"query": "幻觉治理", "mode": "concept", "expect": ["ep_syn0033"], "type": "concept", "note": "挂载此概念的记忆，同时rag-10也涉及幻觉"}
+{"query": "上线后用户抱怨回复慢，主要是卡在哪一步了", "mode": "episode", "expect": ["ep_syn0034"], "type": "semantic", "note": "延迟→回复慢，检索延迟→卡在哪一步"}
+{"query": "HNSW的参数", "mode": "detail", "expect": ["ep_syn0034"], "type": "verbatim", "note": "原文出现的索引算法具体名称"}
+{"query": "向量索引", "mode": "concept", "expect": ["ep_syn0034", "ep_syn0167", "ep_syn0169"], "type": "concept", "note": "挂载此概念的多条记忆"}
+{"query": "回答‘比较类’问题时总偏向后面那个，怎么调整一下", "mode": "episode", "expect": ["ep_syn0035"], "type": "semantic", "note": "位置偏见→偏向，随机化→调整顺序"}
+{"query": "扰动比例建议在 30% 到 50%", "mode": "detail", "expect": ["ep_syn0035"], "type": "verbatim", "note": "原文逐字数字范围，区分度高"}
+{"query": "处理那种带公式的双栏PDF，分块总出问题", "mode": "episode", "expect": ["ep_syn0167"], "type": "semantic", "note": "学术论文PDF→带公式的双栏PDF，分块拆开→总出问题"}
+{"query": "512 tokens 的块重叠 50 tokens", "mode": "detail", "expect": ["ep_syn0167"], "type": "verbatim", "note": "原文逐字配置组合，用于分块实验"}
+{"query": "分块策略", "mode": "concept", "expect": ["ep_syn0167", "ep_syn0034", "ep_syn0169"], "type": "concept", "note": "挂载此概念的多条记忆"}
+{"query": "重叠", "mode": "detail", "expect": ["ep_syn0167"], "type": "short", "note": "两字对抗，原文在分块上下文窗口中出现"}
+{"query": "回答经常编造文档里没有的内容，分块怎么做能减少这种幻觉", "mode": "episode", "expect": ["ep_syn0169"], "type": "semantic", "note": "幻觉→编造内容，语义分块→分块怎么做"}
+{"query": "SentenceWindowNodeParser", "mode": "detail", "expect": ["ep_syn0169"], "type": "verbatim", "note": "原文提到的具体分块工具名"}
+{"query": "cross-encoder 重排", "mode": "concept", "expect": ["ep_syn0169"], "type": "concept", "note": "挂载此概念的记忆"}
+{"query": "概率", "mode": "detail", "expect": ["ep_syn0169"], "type": "short", "note": "两字对抗，原文在置信度讨论中出现"}
+{"query": "在搭建RAG系统时，分块策略有哪些优化经验", "mode": "episode", "expect": ["ep_syn0167", "ep_syn0169"], "type": "multi", "note": "多条记忆都涉及分块策略优化，覆盖学术PDF和通用RAG"}
+{"query": "RAG系统部署在云端还是本地好", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，讨论焦点在算法与策略"}
+{"query": "RAG系统的用户界面应该怎么设计", "mode": "episode", "expect": [], "type": "negative", "note": "库中无此内容，材料聚焦技术后端问题"}
