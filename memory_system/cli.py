@@ -526,7 +526,8 @@ def _recall_detail(cfg: Config, args: argparse.Namespace) -> int:
     hits = result["hits"]
     if not hits:
         print(f"未命中「{args.query}」。")
-        print("提示:FTS trigram 对少于 3 个字符的中文词不可靠,换更长/更具体的词再试。")
+        print("提示:库内原文没有逐字包含该词的段落(<3 字短词已自动走子串回退),"
+              "换更具体的词或调整时间窗再试。")
         return 0
     print(f"细节检索「{args.query}」命中 {len(hits)} 条:")
     for h in hits:

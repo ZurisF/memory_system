@@ -177,9 +177,12 @@ Phase 2 `s6_phase2_build.md`),此处只留架构地图。
 
 - **`detail.py` — 逐字层**。FTS5 trigram grep + snippet 开窗(`--since/--until` 时间过滤、
   `--raw` 整条原文)。无 embedding/无 LLM,**豁免衰减与去重**(确切措辞的查找不该被
-  「最近想没想起」干扰);命中刷时钟。中文查询 ≥3 字(trigram 实测边界)。
-- **`episode.py` — 语义层,全系统唯一的「搜」**。管线:向量+FTS 双路 → RRF(只用名次)→
-  active 硬过滤 + session 去重 → 衰减乘子 × 跨 session 冷却 → 三槽填装(主/同源/联想)→
+  「最近想没想起」干扰);命中刷时钟。中文短词 <3 字 FTS 空手时自动降级 instr 子串回退
+  (S6.5:出现次数降序 + created_at 降序,Python 侧开窗,时钟/契约同 FTS 路);
+  ≥3 字空手不回退(真没有)。
+- **`episode.py` — 语义层,全系统唯一的「搜」**。管线:向量+FTS 双路 → active 硬过滤 +
+  session 去重 → 轻量特征重排(S6.5,`ranking.py`:RRF 归一 + 确定性锚点覆盖 −
+  specificity gap,activation 降为弱加项)→ 跨 session 冷却 → 三槽填装(主/同源/联想)→
   别名锚定 → 收尾落日志刷时钟。
   - **session 去重 / 跨 session 冷却(Phase 2,仅本路)**:`recall_episode(..., session_key=None)`。
     session_key 非空时,同 session 已注入过的 public_id 从**三槽全部候选硬排除**(已在对方

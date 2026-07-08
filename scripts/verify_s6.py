@@ -8,7 +8,8 @@
 - S6-1:半衰期数学(tier=1/14 天≈0.5、elapsed=0→1.0、tier=3/14 天>0.9)、NULL 回退链、
         touch 后活跃度回 1.0。
 - S6-2:精确词命中且窗口含该词、未命中空且退出码 0、--since 排除窗外条目、
-        命中刷时钟未命中不动、红线(--json 无 uuid / 无 embedding)。
+        命中刷时钟未命中不动、红线(--json 无 uuid / 无 embedding)、
+        短词(<3 字)instr 回退(S6.5:occ 排序/开窗/since/时钟,≥3 字空手不回退)。
 - S6-3:双路命中 RRF 分高于单路、三槽正确性(主槽条数/同源同 session 紧邻/联想 via_nodes
         不重复)、时钟只刷 top-1+同源联想不刷、FTS 空手不崩单路照常、红线同前。
 - S6-4:label 直查/alias 查带 bridge/miss 报错三路径、概念层无 source_text、
@@ -200,6 +201,93 @@ def seg_s6_2() -> None:
     hit0 = both["hits"][0]
     assert set(hit0.keys()) == {"public_id", "window", "created_at", "salience_tier"}, hit0.keys()
     ok("红线:--json 无 uuid / 无 embedding / 无 DB id,只对外露 public_id + 窗口 + 日期 + tier")
+
+    # ===== S6.5:中文短词(<3 字)FTS 空手 → instr 子串回退 =====
+    from dataclasses import replace
+
+    from memory_system.fragments import episode_path
+
+    # (7) 2 字词「松饼」:trigram 空手 → 回退命中 B,窗口含该词,契约字段不变
+    fb = recall_detail(CFG, "松饼", now=NOW)
+    assert [h["public_id"] for h in fb["hits"]] == ["ep_bbbb0002"], fb["hits"]
+    assert "松饼" in fb["hits"][0]["window"], fb["hits"][0]["window"]
+    assert set(fb["hits"][0].keys()) == {"public_id", "window", "created_at",
+                                         "salience_tier"}, fb["hits"][0].keys()
+    ok("短词回退:松饼(2 字)FTS 空手 → instr 命中 B,窗口含词,契约字段不变")
+
+    # 临时语料:验证 occ 排序 / since / 时钟(段尾自清碎片,seg_s6_3 的 rebuild 计数不受影响)。
+    # 「咖啡」不出现在 A/B/C:FB1(旧,出现 3 次)、FB2(新,出现 1 次)。
+    fb1 = Episode(public_id="ep_fb010001", overview="咖啡日概览", summary="FB1 摘要",
+                  source_text="早上买了咖啡,下午又续了咖啡,睡前还在想咖啡。",
+                  salience_tier=1, status="active", created_at="2026-06-05T09:00:00+00:00",
+                  activated_at="2026-06-05T09:00:00+00:00")
+    fb2 = Episode(public_id="ep_fb020002", overview="路过概览", summary="FB2 摘要",
+                  source_text="路过一家咖啡店,没进去。",
+                  salience_tier=1, status="active", created_at="2026-06-25T09:00:00+00:00",
+                  activated_at="2026-06-25T09:00:00+00:00")
+    for ep in (fb1, fb2):
+        write_episode(CFG.episodes_dir, ep)
+    rep = rebuild(CFG, FakeProvider(model="fake", dim=16))  # 重置时钟(运行态,预期行为)
+    assert rep.episodes == 5, rep
+
+    # (8) 出现次数排序:FB1 出现 3 次压过更新的 FB2(occ DESC 先于 created_at DESC);
+    #     touch=False 先探一遍,时钟不动(回退路 touch 语义与 FTS 路一致)
+    con = connect(CFG.db_path)
+    try:
+        fb1_base = _row(con, "ep_fb010001")["last_accessed_at"]
+        fb2_base = _row(con, "ep_fb020002")["last_accessed_at"]
+    finally:
+        con.close()
+    occ_res = recall_detail(CFG, "咖啡", touch=False, now=NOW)
+    assert [h["public_id"] for h in occ_res["hits"]] == ["ep_fb010001", "ep_fb020002"], \
+        occ_res["hits"]
+    con = connect(CFG.db_path)
+    try:
+        assert _row(con, "ep_fb010001")["last_accessed_at"] == fb1_base, \
+            "touch=False 的回退命中不该刷时钟"
+    finally:
+        con.close()
+    ok("回退排序:咖啡 ×3 的 FB1(旧)压过 ×1 的 FB2(新);touch=False 不刷时钟")
+
+    # (9) 开窗:小窗下窗口含词且两端截断加 …;--raw 仍整条原文
+    cfgw = replace(CFG, recall=replace(CFG.recall, window_tokens=2))
+    win = recall_detail(cfgw, "咖啡", touch=False, now=NOW)["hits"][0]["window"]
+    assert "咖啡" in win and win.startswith("…") and win.endswith("…"), win
+    raw_fb = recall_detail(CFG, "咖啡", raw=True, touch=False, now=NOW)
+    assert raw_fb["hits"][0]["window"] == fb1.source_text, raw_fb["hits"][0]["window"]
+    ok("回退开窗:首次出现前后各 window_tokens 字符、截断端加 …;--raw 整条原文")
+
+    # (10) since 过滤在回退路同样生效:6/10 之后只剩 FB2
+    since_fb = recall_detail(CFG, "咖啡", since="2026-06-10", touch=False, now=NOW)
+    assert [h["public_id"] for h in since_fb["hits"]] == ["ep_fb020002"], since_fb["hits"]
+    ok("回退 --since:排除 6/5 的 FB1,只剩 FB2")
+
+    # (11) 默认 touch:回退命中刷时钟,与 FTS 路一致;未命中(A)不动
+    con = connect(CFG.db_path)
+    try:
+        a_base = _row(con, "ep_aaaa0001")["last_accessed_at"]
+    finally:
+        con.close()
+    recall_detail(CFG, "咖啡", now=NOW)
+    con = connect(CFG.db_path)
+    try:
+        assert _row(con, "ep_fb010001")["last_accessed_at"] == NOW.isoformat()
+        assert _row(con, "ep_fb020002")["last_accessed_at"] == NOW.isoformat()
+        assert _row(con, "ep_aaaa0001")["last_accessed_at"] == a_base, \
+            "未命中的 A 时钟不该被回退路刷新"
+        assert fb2_base != NOW.isoformat(), "基线本身不该等于 NOW,否则断言空转"
+    finally:
+        con.close()
+    ok("回退时钟:命中 FB1/FB2 刷到 NOW,未命中 A 原封不动")
+
+    # (12) ≥3 字空手不回退(行为不变):4 字怪词空 hits;2 字怪词回退后同样空
+    assert recall_detail(CFG, "量子茶壶", now=NOW)["hits"] == []
+    assert recall_detail(CFG, "茶壶", now=NOW)["hits"] == []
+    ok("≥3 字空手不回退:量子茶壶 空 hits;2 字 茶壶 回退扫描后同样空")
+
+    # 自清:删临时碎片(碎片是正本,seg_s6_3 开头的 rebuild 会把 DB 收敛回 11 条)
+    for pid in ("ep_fb010001", "ep_fb020002"):
+        episode_path(CFG.episodes_dir, pid).unlink()
 
 
 # ============ S6-3:情景检索(双路 RRF + 三槽 + 时钟规则)============
