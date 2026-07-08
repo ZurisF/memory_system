@@ -114,6 +114,13 @@ class RecallConfig:
     candidate_multiplier: int = 4  # 两路各取 topk_final*4 进 RRF
     rrf_k: int = 60
     w_activation: float = 0.3      # 衰减乘子权重: score * (1 + w * activation)
+    # S6.5 episode 轻量重排(ranking.py 线性分):relevance = w_rrf·rrf_norm
+    # + w_anchor·coverage + w_activation·activation − w_gap·gap。
+    # 旧乘子 w_activation 保留给 opening 等消费者;episode 新排序不再用它。
+    w_rank_rrf: float = 0.40         # 线性重排:RRF 归一分权重(语义底盘)
+    w_rank_anchor: float = 0.40      # 线性重排:锚点覆盖权重(本次核心)
+    w_rank_gap: float = 0.18         # 线性重排:specificity gap 惩罚权重
+    w_rank_activation: float = 0.05  # 线性重排:活跃度弱加项(仅 tie-break 级)
     same_source_span: int = 1      # 同源扩展前后各取几条
     assoc_limit: int = 2           # 联想槽上限
     detail_limit: int = 5          # 细节检索返回条数
@@ -183,6 +190,11 @@ def _recall_from_env() -> RecallConfig:
             "MEMORY_RECALL_CANDIDATE_MULTIPLIER", str(d.candidate_multiplier))),
         rrf_k=int(os.environ.get("MEMORY_RECALL_RRF_K", str(d.rrf_k))),
         w_activation=float(os.environ.get("MEMORY_RECALL_W_ACTIVATION", str(d.w_activation))),
+        w_rank_rrf=_env_float("MEMORY_RECALL_W_RANK_RRF", d.w_rank_rrf),
+        w_rank_anchor=_env_float("MEMORY_RECALL_W_RANK_ANCHOR", d.w_rank_anchor),
+        w_rank_gap=_env_float("MEMORY_RECALL_W_RANK_GAP", d.w_rank_gap),
+        w_rank_activation=_env_float(
+            "MEMORY_RECALL_W_RANK_ACTIVATION", d.w_rank_activation),
         same_source_span=int(os.environ.get(
             "MEMORY_RECALL_SAME_SOURCE_SPAN", str(d.same_source_span))),
         assoc_limit=int(os.environ.get("MEMORY_RECALL_ASSOC_LIMIT", str(d.assoc_limit))),

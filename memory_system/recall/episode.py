@@ -1,12 +1,13 @@
-"""情景检索(S6-3):向量+FTS 双路 → RRF 融合 → 硬过滤 → 衰减乘子 → 填槽。
+"""情景检索(S6-3):向量+FTS 双路 → 硬过滤 → 轻量特征重排(S6.5)→ 填槽。
 
-s6_build_plan §4 S6-3 的十个要点按序落在 recall_episode 里:
+s6_build_plan §4 S6-3 的十个要点按序落在 recall_episode 里(④⑤ 已由 S6.5 升级):
   1. meta 锁检查(只读不写:照 index.assert_embeddable 的语义,锁在且不符即拒;锁缺不落锁)
   2. 双路召回(各取 topk_final*candidate_multiplier;vec0 不支持 filtered KNN,多取后应用层过滤;
      FTS 空手/坏 query 不报错,退化单路)
   3. 硬过滤 status='active'
-  4. RRF:score = Σ_路 1/(rrf_k + rank),只用名次不用原始分
-  5. 衰减乘子:final = rrf * (1 + w_activation * effective_activation)
+  4. 轻量特征重排(S6.5,ranking.py):relevance = w·RRF 归一(只用名次)
+     + w·anchor_coverage − w·specificity_gap + w·activation
+  5. activation 从旧 RRF 乘子降为线性弱加项(进 ④ 的 relevance;旧乘子路径已删)
   6. 主槽 topk_final 条
   7. 同源扩展槽:top-1 同 session、created_at 紧邻前后各 same_source_span 条(去掉已在主槽的)
   8. 联想槽:主槽经膜拿 node → 反查其他 active episode → 按与 query 的 overview 向量相似度排,
@@ -35,6 +36,7 @@ from memory_system.embedding import get_provider
 from memory_system.log import get_logger
 from memory_system.recall import decay
 from memory_system.recall.detail import _fts_phrase
+from memory_system.recall.ranking import EpisodeCandidate, rank_episode_candidates
 
 
 def _check_meta_lock(con: sqlite3.Connection, provider) -> None:
@@ -108,7 +110,7 @@ def recall_episode(
     Phase 2 的 `session_key`(裁定 §0.2–0.5):
       - 为 None(CLI 手动/eval 夹具默认):完全等价 Phase 1——不去重、不冷却、不写日志。
       - 非空:同 session 已注入的 public_id 从**三槽全部**候选硬排除(去重,dedup_session 总开关);
-        其他 session 在 cooldown_hours 窗口内注入过的候选 RRF×衰减分乘 cooldown_factor(冷却,温和降序);
+        其他 session 在 cooldown_hours 窗口内注入过的候选 relevance 钳非负后乘 cooldown_factor(冷却,温和降序);
         且 touch=True 时把返回三槽全部 public_id 写 injected_log(hit_at=now),与时钟刷新同一事务。
     """
     rc = cfg.recall
@@ -174,18 +176,40 @@ def recall_episode(
         active = {eid: r for eid, r in rows.items()
                   if r["status"] == "active" and r["public_id"] not in dedup_pids}
 
-        # ④ RRF(只用名次)+ ⑤ 衰减乘子(温和乘子,不是独立权重轴)
+        # ④+⑤ 轻量特征重排(S6.5,ranking.py):RRF 归一 + 锚点覆盖 − specificity gap,
+        #    activation 从旧乘子降为弱加项(旧 rrf*(1+w_activation*act) 路径已删,git 即回滚)。
+        #    两轴词表不同:候选各自的 node label+alias 是匹配字段(候选侧);
+        #    全库 label+alias 词表是 query 锚点证据源(query 侧),与候选无关。
         final: dict[int, float] = {}
-        for eid, r in active.items():
-            rrf = 0.0
-            if eid in vec_rank:
-                rrf += 1.0 / (rc.rrf_k + vec_rank[eid])
-            if eid in fts_rank:
-                rrf += 1.0 / (rc.rrf_k + fts_rank[eid])
-            act = decay.effective_activation(
-                r["last_accessed_at"], r["salience_tier"], rc, now,
-                activated_at=r["activated_at"], created_at=r["created_at"])
-            final[eid] = rrf * (1.0 + rc.w_activation * act)
+        if active:
+            phn2 = ",".join("?" * len(active))
+            node_terms_by_eid: dict[int, list[str]] = {eid: [] for eid in active}
+            for r in con.execute(
+                    f"SELECT en.episode_id AS eid, n.label AS label, a.alias AS alias "
+                    f"FROM episode_nodes en JOIN nodes n ON n.id = en.node_id "
+                    f"LEFT JOIN node_aliases a ON a.node_id = n.id "
+                    f"WHERE en.episode_id IN ({phn2})", list(active)):
+                terms = node_terms_by_eid[r["eid"]]
+                if r["label"] not in terms:
+                    terms.append(r["label"])            # LEFT JOIN:无别名也收 label
+                if r["alias"] is not None and r["alias"] not in terms:
+                    terms.append(r["alias"])
+            vocab = ([r["label"] for r in con.execute("SELECT label FROM nodes")]
+                     + [r["alias"] for r in con.execute("SELECT alias FROM node_aliases")])
+            rank_pool = [EpisodeCandidate(
+                eid=eid, public_id=r["public_id"], overview=r["overview"] or "",
+                summary=r["summary"] or "",
+                highlights=[h.get("text", "") if isinstance(h, dict) else str(h)
+                            for h in _highlights(r)],   # ranking 只吃文本,json 在此解
+                source_text=r["source_text"] or "",
+                node_terms=node_terms_by_eid[eid], created_at=r["created_at"],
+                vector_rank=vec_rank.get(eid), fts_rank=fts_rank.get(eid),
+                activation=decay.effective_activation(
+                    r["last_accessed_at"], r["salience_tier"], rc, now,
+                    activated_at=r["activated_at"], created_at=r["created_at"]),
+            ) for eid, r in active.items()]
+            ranked = rank_episode_candidates(q, rank_pool, rc=rc, node_terms=vocab)
+            final = dict(ranked.scores)   # eid -> relevance(features/anchors 只供 debug,不外泄)
 
         # ⑤b 跨 session 冷却(温和乘子,裁定 §0.3):其他 session 窗口内注入过的候选分乘 cooldown_factor。
         #     只降序不排除——回忆线索永远响应。冷却状态落日志(可重放红线),但不进 --json 契约。
@@ -194,14 +218,17 @@ def recall_episode(
                             if active[eid]["public_id"] in cooldown_pids)
             for eid in final:
                 if active[eid]["public_id"] in cooldown_pids:
-                    final[eid] *= rc.cooldown_factor
+                    # relevance 可为负(gap 惩罚):负分直乘 factor<1 反而抬分,
+                    # 先 max(0,·) 钳到 0 再乘,保证冷却只降不升。
+                    final[eid] = max(0.0, final[eid]) * rc.cooldown_factor
             if cooled:
                 get_logger().info(
                     "recall episode 冷却生效(可重放): session=%s factor=%s window_h=%s cooled=%s",
                     session_key, rc.cooldown_factor, rc.cooldown_hours,
                     json.dumps(cooled, ensure_ascii=False))
 
-        # ⑥ 主槽:final 降序取 topk_final(同分按 created_at/public_id 定序,保证可重放)
+        # ⑥ 主槽:relevance 降序取 topk_final(tie-break 与 ranking.ordered 同 key,
+        #    冷却未触发时结果 = ranked.ordered[:topk_final];同分按 created_at/public_id 可重放)
         primary_ids = sorted(
             final, key=lambda i: (-final[i], active[i]["created_at"], active[i]["public_id"])
         )[:rc.topk_final]
