@@ -5,8 +5,10 @@
 这里只做**表达**:候选集内怎么取舍、揉合归重构 LLM,槽位权限与防虚构约束写在 prompt 里
 (prompt 是核心调参对象,独立文件不硬编码,照既有惯例)。
 
-重构 LLM 的输入固定三部分(§0.2 铁律):
-  重构 system prompt + 结构化检索结果(JSON 美化)+ 用户当轮 query。
+重构 LLM 的输入固定四部分(§0.2 铁律,2026-07-07 增当前时间):
+  重构 system prompt + 结构化检索结果(JSON 美化)+ 当前时间 + 用户当轮 query。
+当前时间给时间感用(prompt 两档规则:月内相对轴/更远按 created_at 模糊时段);
+与 created_at 同为 UTC ISO,模型比较时基准一致。
 
 细节检索不接重构:开窗就是它的默认输出,语义重构会毁掉逐字保真(§4 S6-5)。
 失败抛 ChatError,由调用方(CLI)决定降级——回落 --raw 结构化输出,不吞结果。
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 from memory_system.agent import get_chat_provider
@@ -52,8 +55,10 @@ def run(cfg: Config, mode: str, structured: dict, user_query: str, *, provider=N
     if mode not in _PROMPT_FILES:
         raise ValueError(f"未知重构 mode: {mode!r}(细节检索不接重构)")
     system = (_PROMPT_DIR / _PROMPT_FILES[mode]).read_text(encoding="utf-8")
+    now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
     user = ("## 结构化检索结果\n"
             + json.dumps(structured, ensure_ascii=False, indent=2)
+            + "\n\n## 当前时间\n" + now_iso
             + "\n\n## 用户当轮 query\n" + user_query)
     # 候选集日志:重构调用之前落盘(即使重构失败,这次召回也可重放)。
     get_logger().info("recall %s 重构候选集(可重放): %s", mode,

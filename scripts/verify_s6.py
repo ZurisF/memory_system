@@ -439,9 +439,10 @@ def seg_s6_5() -> None:
     want_sys = (reconstruct._PROMPT_DIR / "recall_episode_system.txt").read_text(encoding="utf-8")
     assert seen["system"] == want_sys, "system 必须是 prompt 文件全文(不硬编码)"
     assert "## 结构化检索结果" in seen["user"] and "## 用户当轮 query" in seen["user"]
+    assert "## 当前时间" in seen["user"], "当前时间节缺失(时间感两档规则的依据)"
     assert Q1 in seen["user"] and "ep_dddd0004" in seen["user"]
     assert seen["model"] == CFG.agent.recall_model
-    ok("reconstruct.run:三部分输入(prompt 文件/结构化 JSON/当轮 query),输出=provider 返回值")
+    ok("reconstruct.run:四部分输入(prompt 文件/结构化 JSON/当前时间/当轮 query),输出=provider 返回值")
 
     # (2)–(4) CLI 管线:替换 reconstruct 的 provider 工厂为受控 fake
     box = {"p": FakeChatProvider(behaviors=["回忆:曲率引擎的那一晚。"])}
