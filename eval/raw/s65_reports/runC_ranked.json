@@ -1,0 +1,6025 @@
+{
+  "generated_at": "2026-07-08T11:30:04+00:00",
+  "k": 3,
+  "recall_config": {
+    "half_life_days": [
+      14.0,
+      90.0,
+      365.0
+    ],
+    "topk_final": 3,
+    "candidate_multiplier": 4,
+    "rrf_k": 60,
+    "w_activation": 0.3,
+    "w_rank_rrf": 0.4,
+    "w_rank_anchor": 0.4,
+    "w_rank_gap": 0.18,
+    "w_rank_activation": 0.05,
+    "same_source_span": 1,
+    "assoc_limit": 2,
+    "detail_limit": 5,
+    "window_tokens": 48,
+    "opening_max_items": 3,
+    "opening_token_budget": 250,
+    "dedup_session": true,
+    "cooldown_hours": 24.0,
+    "cooldown_factor": 0.8,
+    "opening_spark": 1,
+    "opening_spark_temp": 1.0
+  },
+  "param_overrides": [],
+  "summary": {
+    "n": 266,
+    "n_pos": 266,
+    "hit1_rate": 0.6766917293233082,
+    "hitk_rate": 0.8909774436090225,
+    "mrr": 0.7756892230576441,
+    "mean_best_rank": 1.2953586497890295,
+    "coverage": "237/266",
+    "negatives": {
+      "n": 0,
+      "mean_false_topk": null,
+      "clean_rate": null
+    }
+  },
+  "by_mode": {
+    "episode": {
+      "n": 266,
+      "n_pos": 266,
+      "n_neg": 0,
+      "hit1_rate": 0.6766917293233082,
+      "hitk_rate": 0.8909774436090225,
+      "mrr": 0.7756892230576441,
+      "mean_best_rank": 1.2953586497890295,
+      "coverage": "237/266",
+      "neg_mean_false": null,
+      "neg_clean_rate": null
+    }
+  },
+  "by_type": {
+    "semantic": {
+      "n": 221,
+      "n_pos": 221,
+      "n_neg": 0,
+      "hit1_rate": 0.7285067873303167,
+      "hitk_rate": 0.9049773755656109,
+      "mrr": 0.8099547511312217,
+      "mean_best_rank": 1.24,
+      "coverage": "200/221",
+      "neg_mean_false": null,
+      "neg_clean_rate": null
+    },
+    "multi": {
+      "n": 45,
+      "n_pos": 45,
+      "n_neg": 0,
+      "hit1_rate": 0.4222222222222222,
+      "hitk_rate": 0.8222222222222222,
+      "mrr": 0.6074074074074074,
+      "mean_best_rank": 1.5945945945945945,
+      "coverage": "37/45",
+      "neg_mean_false": null,
+      "neg_clean_rate": null
+    }
+  },
+  "per_query": [
+    {
+      "query": "优化文档分块时，重叠部分通常占多大比例比较合理？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0018"
+      ],
+      "topk_ids": [
+        "ep_syn0018",
+        "ep_syn0026",
+        "ep_syn0023"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排模型太慢，考虑换什么更高效的模型？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0019"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0169",
+        "ep_syn0019"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 3,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.3333333333333333,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "生成模型胡乱编造信息，有什么办法减少这种错误？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0020"
+      ],
+      "topk_ids": [
+        "ep_syn0020",
+        "ep_syn0169",
+        "ep_syn0033"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块策略调整后效果不明显，需要关注哪些方面？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0026",
+        "ep_syn0169",
+        "ep_syn0021"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 3,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.3333333333333333,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "对方数据是PDF格式，我们系统如何支持？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0022"
+      ],
+      "topk_ids": [
+        "ep_syn0022",
+        "ep_syn0167",
+        "ep_syn0033"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前关于分块策略的调整和测试结果，都聊了些什么？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0018",
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0021",
+        "ep_syn0169",
+        "ep_syn0026"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前遇到代码片段和说明文字总被分割器拆散，后来是怎么优化分块策略的",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0023"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0167",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "医疗RAG的响应时间从300ms涨到500ms，你们最后用了什么办法压下去的",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0024"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0029",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "怎么让分块边界跟着文档结构走，而不是按固定字数硬切",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0025"
+      ],
+      "topk_ids": [
+        "ep_syn0025",
+        "ep_syn0001",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前PDF手册被切碎的问题，后来调了哪些参数解决的",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0026"
+      ],
+      "topk_ids": [
+        "ep_syn0026",
+        "ep_syn0167",
+        "ep_syn0025"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "cross-encoder重排太慢，除了换小模型还有哪些招",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0027"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0019",
+        "ep_syn0024"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "关于提高检索准确性的整体思路，之前都聊过哪些方面的优化",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0023",
+        "ep_syn0024",
+        "ep_syn0025",
+        "ep_syn0026",
+        "ep_syn0027"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0021",
+        "ep_syn0020"
+      ],
+      "n_expect": 5,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "上次客户投诉机器人瞎回答，后来用什么法子压住了幻觉？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0028"
+      ],
+      "topk_ids": [
+        "ep_syn0028",
+        "ep_syn0030",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "系统响应慢用户抱怨，后来怎么优化的来着？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0029"
+      ],
+      "topk_ids": [
+        "ep_syn0029",
+        "ep_syn0034",
+        "ep_syn0152"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "上次那个RAG项目跑了三个月，最后效果咋样？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0030"
+      ],
+      "topk_ids": [
+        "ep_syn0030",
+        "ep_syn0169",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前分块用默认参数，结果召回的段落很碎，后来怎么调整的？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0031"
+      ],
+      "topk_ids": [
+        "ep_syn0031",
+        "ep_syn0026",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排模型换了bge-reranker，但好像没啥提升，有啥优化技巧？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0032",
+        "ep_syn0034"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "最近在优化RAG系统，主要从哪些方面下手？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0029",
+        "ep_syn0030",
+        "ep_syn0031",
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0169",
+        "ep_syn0026"
+      ],
+      "n_expect": 4,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG瞎编数据的问题有啥治标治本的法子",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0033"
+      ],
+      "topk_ids": [
+        "ep_syn0033",
+        "ep_syn0167",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "那个回答慢半拍的毛病是咋回事",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0034"
+      ],
+      "topk_ids": [
+        "ep_syn0035",
+        "ep_syn0146",
+        "ep_syn0152"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "比较类问题回答老是偏向后一个",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0035"
+      ],
+      "topk_ids": [
+        "ep_syn0035",
+        "ep_syn0032",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块不当导致检索失效咋整",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0167",
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0021",
+        "ep_syn0025",
+        "ep_syn0018"
+      ],
+      "n_expect": 2,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "回答老是扯到文档外的内容咋办",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0031",
+        "ep_syn0167",
+        "ep_syn0025"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前分块用固定长度，总是把句子切得支离破碎，后来怎么改进的？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0018"
+      ],
+      "topk_ids": [
+        "ep_syn0025",
+        "ep_syn0006",
+        "ep_syn0165"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排模块太卡了，换个轻量级模型能解决吗？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0019"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0019",
+        "ep_syn0020"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "机器人回答时老是瞎编，有没有办法让它更忠实于资料？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0020"
+      ],
+      "topk_ids": [
+        "ep_syn0028",
+        "ep_syn0169",
+        "ep_syn0020"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 3,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.3333333333333333,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "改了分块规则后准确率没怎么上去，问题可能出在哪？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0021",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "外部团队用PDF格式，我们系统不支持，得怎么处理？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0022"
+      ],
+      "topk_ids": [
+        "ep_syn0022",
+        "ep_syn0167",
+        "ep_syn0042"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们之前讨论文档分块，还提到了哪些改进点？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0018",
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0026",
+        "ep_syn0021",
+        "ep_syn0018"
+      ],
+      "n_expect": 2,
+      "n_found": 2,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "处理技术文档时，分块工具老是把代码和解释拆散，有什么好办法吗？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0023"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0031",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "医疗问答系统加了重排序步骤后响应变慢，有什么优化思路？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0024"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0034",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "用固定大小切分文档，长的上下文断了，短的又信息太杂，该怎么解决？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0025"
+      ],
+      "topk_ids": [
+        "ep_syn0025",
+        "ep_syn0001",
+        "ep_syn0018"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "产品手册PDF分块后章节内容被拆散，怎么调整参数能改善检索？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0026"
+      ],
+      "topk_ids": [
+        "ep_syn0026",
+        "ep_syn0167",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排序模型推理太慢，只对最相关的几个结果排序能快多少？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0027"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0169",
+        "ep_syn0032"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "在RAG系统优化中，我们讨论了哪些具体的技术方案？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0023",
+        "ep_syn0024",
+        "ep_syn0025",
+        "ep_syn0026",
+        "ep_syn0027"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0033",
+        "ep_syn0032"
+      ],
+      "n_expect": 5,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "怎么防止聊天机器人瞎编东西被客户投诉？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0028"
+      ],
+      "topk_ids": [
+        "ep_syn0028",
+        "ep_syn0030",
+        "ep_syn0020"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "系统响应太慢，用户抱怨，有什么办法加快？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0029"
+      ],
+      "topk_ids": [
+        "ep_syn0029",
+        "ep_syn0034",
+        "ep_syn0163"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "项目做了这么久，效果到底怎么样？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0030"
+      ],
+      "topk_ids": [
+        "ep_syn0030",
+        "ep_syn0021",
+        "ep_syn0161"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块大小设置不好导致答案不连贯，怎么调整？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0031"
+      ],
+      "topk_ids": [
+        "ep_syn0018",
+        "ep_syn0025",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排用了bge-reranker，但效果不明显，问题出在哪？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0032",
+        "ep_syn0169",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG系统中有哪些方法可以提升响应速度？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0029",
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0029",
+        "ep_syn0024",
+        "ep_syn0034"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "咱们那个RAG系统瞎编数据的问题，有什么靠谱的制衡办法吗？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0033"
+      ],
+      "topk_ids": [
+        "ep_syn0033",
+        "ep_syn0169",
+        "ep_syn0024"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们那个RAG服务第一次回答太慢了，有啥优化思路？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0034"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0024",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "产品同事说咱们的RAG回答‘A和B哪个更好’时老是偏爱B，怎么治？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0035"
+      ],
+      "topk_ids": [
+        "ep_syn0035",
+        "ep_syn0028",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "处理IEEE两栏PDF时，分块把公式拆散了，检索效果变差，怎么搞？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0167"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0018",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们那个问答机器人总出幻觉，分块又老是把段落切断，该先动哪块？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0169",
+        "ep_syn0018"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "怎么优化检索的延迟？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0034"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0024",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们那个RAG机器人处理学术论文PDF效果不好，有什么建议？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0167"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0169",
+        "ep_syn0018"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们那个问答机器人项目，用cross-encoder重排效果怎么样？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0027",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "你们那个RAG项目处理PDF和处理一般文档的分块，有什么不同？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0167",
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0022",
+        "ep_syn0026"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "解决RAG幻觉和提升相关性，你们都试过哪些组合拳？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0033",
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0020",
+        "ep_syn0030"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们那个问答机器人，固定长度切块效果不太好，你建议怎么改",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0018"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0026",
+        "ep_syn0018"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 3,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.3333333333333333,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块策略测试下来效果一般，评估指标用了哪些",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0021",
+        "ep_syn0169",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排太慢影响体验，现在换成什么模型能快点",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0019"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0019",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "回答不靠谱老是编故事，怎么治",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0020"
+      ],
+      "topk_ids": [
+        "ep_syn0028",
+        "ep_syn0163",
+        "ep_syn0146"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "团队那边要用PDF格式，咱们系统怎么支持",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0022"
+      ],
+      "topk_ids": [
+        "ep_syn0022",
+        "ep_syn0167",
+        "ep_syn0042"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块策略的测试情况怎么样？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0018",
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0167",
+        "ep_syn0021"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 3,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.3333333333333333,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前代码老是被切断，问答效果差，后来怎么解决的",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0023"
+      ],
+      "topk_ids": [
+        "ep_syn0026",
+        "ep_syn0167",
+        "ep_syn0018"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前医疗问答那个模型加上重排后响应变慢，怎么优化",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0024"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0169",
+        "ep_syn0034"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "固定分块效果不稳定，怎么用语义边界来切",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0025"
+      ],
+      "topk_ids": [
+        "ep_syn0025",
+        "ep_syn0169",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "客服机器人的PDF文档被切得支离破碎，后来改了什么策略",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0026"
+      ],
+      "topk_ids": [
+        "ep_syn0026",
+        "ep_syn0167",
+        "ep_syn0030"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排模型推理太慢，并发高时是瓶颈，怎么优化的",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0027"
+      ],
+      "topk_ids": [
+        "ep_syn0027",
+        "ep_syn0034",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块策略上有哪些尝试",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0023",
+        "ep_syn0025",
+        "ep_syn0026"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0026",
+        "ep_syn0169"
+      ],
+      "n_expect": 3,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们客服机器人老是瞎编答案，客户都投诉了，该怎么自动抓出来？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0028"
+      ],
+      "topk_ids": [
+        "ep_syn0028",
+        "ep_syn0030",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG集成后接口乱，响应还慢，有什么架构上能改的？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0029"
+      ],
+      "topk_ids": [
+        "ep_syn0029",
+        "ep_syn0020",
+        "ep_syn0034"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "那个RAG项目跑了几个月，准确率和投诉率变化大吗？花了多少钱？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0030"
+      ],
+      "topk_ids": [
+        "ep_syn0030",
+        "ep_syn0028",
+        "ep_syn0021"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前讨论过减少客服机器人错误的方法，现在实际效果提升了多少？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0028",
+        "ep_syn0030"
+      ],
+      "topk_ids": [
+        "ep_syn0030",
+        "ep_syn0169",
+        "ep_syn0026"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块设置太小，导致召回的文本碎片化，有什么调整建议？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0031"
+      ],
+      "topk_ids": [
+        "ep_syn0031",
+        "ep_syn0167",
+        "ep_syn0018"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排用了bge-reranker，但回答质量没明显变好，该怎么调？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0032",
+        "ep_syn0169",
+        "ep_syn0035"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG回答里老出现没有依据的数字，有什么好办法处理？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0033"
+      ],
+      "topk_ids": [
+        "ep_syn0033",
+        "ep_syn0169",
+        "ep_syn0028"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG服务首答延迟大，瓶颈在哪儿？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0034"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0019",
+        "ep_syn0020"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG回答‘A和B哪个更好’时总偏向B，怎么处理这种倾斜？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0035"
+      ],
+      "topk_ids": [
+        "ep_syn0035",
+        "ep_syn0028",
+        "ep_syn0032"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG处理学术PDF时，分块破坏了公式和引用，有什么优化思路？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0167"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0169",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG分块策略有哪些优化考虑？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0167",
+        "ep_syn0034"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0167",
+        "ep_syn0021"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG检索结果相关性差，怎么进一步提高准确度？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0032",
+        "ep_syn0030"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们RAG系统的幻觉问题有哪些治理方案？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0033",
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0033",
+        "ep_syn0020",
+        "ep_syn0028"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "上次说的切段算法具体是怎么处理长对话的，为什么太长的对话信息会丢失",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0001"
+      ],
+      "topk_ids": [
+        "ep_syn0001",
+        "ep_syn0006",
+        "ep_syn0165"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "蒸馏出来的摘要质量参差不齐，特别是长对话，有什么办法保证信息密度",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0002"
+      ],
+      "topk_ids": [
+        "ep_syn0017",
+        "ep_syn0002",
+        "ep_syn0166"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "内存爆了，除了上量化，向量检索在长期记忆场景下对精度有什么特别要求",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0003"
+      ],
+      "topk_ids": [
+        "ep_syn0003",
+        "ep_syn0168",
+        "ep_syn0007"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "怎么才能让那些总结出来的事实点自己就带上实体和关系信息，方便后面建图",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0004"
+      ],
+      "topk_ids": [
+        "ep_syn0004",
+        "ep_syn0166",
+        "ep_syn0168"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "各个模块都是独立的，怎么把它们串成一个完整的流程，不让系统卡住",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0005"
+      ],
+      "topk_ids": [
+        "ep_syn0005",
+        "ep_syn0190",
+        "ep_syn0161"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "有没有设计过整个长期记忆系统的整体架构，包括切分、摘要、索引这些环节怎么协作",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0001",
+        "ep_syn0002",
+        "ep_syn0003",
+        "ep_syn0004",
+        "ep_syn0005"
+      ],
+      "topk_ids": [
+        "ep_syn0005",
+        "ep_syn0015",
+        "ep_syn0010"
+      ],
+      "n_expect": 5,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们怎么确定记忆条目切分的段落长度？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0006"
+      ],
+      "topk_ids": [
+        "ep_syn0166",
+        "ep_syn0165",
+        "ep_syn0006"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 3,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.3333333333333333,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "向量存储我们打算用什么数据库？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0007"
+      ],
+      "topk_ids": [
+        "ep_syn0014",
+        "ep_syn0007",
+        "ep_syn0005"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "概念图的节点类型应该怎么划分？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0008"
+      ],
+      "topk_ids": [
+        "ep_syn0008",
+        "ep_syn0015",
+        "ep_syn0004"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "LLM蒸馏出来的事实怎么验证可靠性？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0009"
+      ],
+      "topk_ids": [
+        "ep_syn0009",
+        "ep_syn0017",
+        "ep_syn0004"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "跨对话的上下文太长怎么处理？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0010"
+      ],
+      "topk_ids": [
+        "ep_syn0011",
+        "ep_syn0001",
+        "ep_syn0165"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "蒸馏过程有哪些相关讨论？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0009",
+        "ep_syn0010"
+      ],
+      "topk_ids": [
+        "ep_syn0009",
+        "ep_syn0012",
+        "ep_syn0166"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前觉得切段方式太生硬，有什么更智能的办法吗？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0011"
+      ],
+      "topk_ids": [
+        "ep_syn0001",
+        "ep_syn0165",
+        "ep_syn0016"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "生成摘要时总丢掉具体数字，怎么确保重要信息不被漏掉？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0012"
+      ],
+      "topk_ids": [
+        "ep_syn0017",
+        "ep_syn0012",
+        "ep_syn0166"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "测试的时候发现搜索结果不全，怎么把相关片段自动拼起来？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0013"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0013",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "数据库后期扛不住十万数据，有没有更好的存储方案？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0014"
+      ],
+      "topk_ids": [
+        "ep_syn0014",
+        "ep_syn0007",
+        "ep_syn0005"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "项目名和功能描述混用，概念图里怎么理清关系？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0015"
+      ],
+      "topk_ids": [
+        "ep_syn0015",
+        "ep_syn0168",
+        "ep_syn0004"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "记忆系统各环节如何优化？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0011",
+        "ep_syn0012",
+        "ep_syn0013"
+      ],
+      "topk_ids": [
+        "ep_syn0005",
+        "ep_syn0013",
+        "ep_syn0010"
+      ],
+      "n_expect": 3,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "对话分段老是搞乱话题结构，怎么才能更智能地划分？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0016"
+      ],
+      "topk_ids": [
+        "ep_syn0165",
+        "ep_syn0016",
+        "ep_syn0001"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "蒸馏摘要信息丢失严重，特别是细节，有什么好办法？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0017"
+      ],
+      "topk_ids": [
+        "ep_syn0017",
+        "ep_syn0012",
+        "ep_syn0166"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "对话数据切段后，存储格式和时间标记怎么处理比较好？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0165"
+      ],
+      "topk_ids": [
+        "ep_syn0165",
+        "ep_syn0016",
+        "ep_syn0005"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "口语对话蒸馏时提取不准，规则模板和模型微调怎么做？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0166"
+      ],
+      "topk_ids": [
+        "ep_syn0166",
+        "ep_syn0012",
+        "ep_syn0017"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "切段模块效率低，检索慢，概念图乱，怎么整体优化？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0168"
+      ],
+      "topk_ids": [
+        "ep_syn0168",
+        "ep_syn0013",
+        "ep_syn0002"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "你们聊过蒸馏的哪些方面？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0016",
+        "ep_syn0017",
+        "ep_syn0166",
+        "ep_syn0168"
+      ],
+      "topk_ids": [
+        "ep_syn0166",
+        "ep_syn0017",
+        "ep_syn0002"
+      ],
+      "n_expect": 4,
+      "n_found": 2,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块老是把句子切开，怎么处理比较好？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0018"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0025",
+        "ep_syn0165"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排太慢影响体验，有快一点的模型推荐吗？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0019"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0169",
+        "ep_syn0019"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 3,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.3333333333333333,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "机器人老是编答案，怎么让它只基于事实回答？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0020"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0020",
+        "ep_syn0028"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "换了分块策略后准确率提升不大，问题可能出在哪？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0021",
+        "ep_syn0169",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "关于文档分块，我们讨论过哪些优化思路？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0018",
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0018",
+        "ep_syn0026"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "外部团队想用我们的机器人，但他们的文档是PDF格式，怎么处理？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0022"
+      ],
+      "topk_ids": [
+        "ep_syn0022",
+        "ep_syn0167",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "上次提到代码和解释老被切开，后来怎么解决的来着",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0023"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0001",
+        "ep_syn0016"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块有什么好的经验分享吗",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0023",
+        "ep_syn0025",
+        "ep_syn0026"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0167",
+        "ep_syn0025"
+      ],
+      "n_expect": 3,
+      "n_found": 1,
+      "best_rank": 3,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.3333333333333333,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排序模型加了之后，响应时间变慢了，有什么优化思路",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0024"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0169",
+        "ep_syn0034"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "文档结构复杂，比如有表格代码，分块怎么做比较好",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0025"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0025",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "客服问答的机器人，之前分块后语义断开，比如产品手册的章节被切碎，怎么处理",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0026"
+      ],
+      "topk_ids": [
+        "ep_syn0026",
+        "ep_syn0167",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排序推理慢，每个查询要200ms，怎么解决",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0027"
+      ],
+      "topk_ids": [
+        "ep_syn0027",
+        "ep_syn0024",
+        "ep_syn0019"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "上次客服回答编造事实，后来怎么验证的？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0028"
+      ],
+      "topk_ids": [
+        "ep_syn0020",
+        "ep_syn0009",
+        "ep_syn0028"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 3,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.3333333333333333,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG系统响应慢的问题后来怎么解决的？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0029"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0029",
+        "ep_syn0020"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG项目做了三个月，现在效果评估怎么样？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0030"
+      ],
+      "topk_ids": [
+        "ep_syn0030",
+        "ep_syn0169",
+        "ep_syn0021"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块太小导致召回段落很碎，怎么调整？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0031"
+      ],
+      "topk_ids": [
+        "ep_syn0031",
+        "ep_syn0026",
+        "ep_syn0001"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排模型用bge-reranker效果不好，可能原因是什么？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0032",
+        "ep_syn0169",
+        "ep_syn0019"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们RAG系统整体优化有哪些方面？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0028",
+        "ep_syn0029",
+        "ep_syn0030",
+        "ep_syn0031",
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0169",
+        "ep_syn0034"
+      ],
+      "n_expect": 5,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前讨论过RAG生成不实信息的问题，比如自己编百分比数据，有提到什么能减少这种情况的办法吗",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0033"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0033",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "有个系统刚上线，用户反馈第一个回答出来特别慢，得等好几秒，是哪块卡住了？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0034"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0161",
+        "ep_syn0152"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们系统回答“A和B哪个好”这类问题时，总偏心后面的，怎么破？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0035"
+      ],
+      "topk_ids": [
+        "ep_syn0035",
+        "ep_syn0032",
+        "ep_syn0136"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "处理学术PDF时，老是把公式拆开，你们后来是怎么解决这个头疼问题的？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0167"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0022",
+        "ep_syn0025"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "有没有一起聊过RAG系统的优化？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0033",
+        "ep_syn0034",
+        "ep_syn0035",
+        "ep_syn0167",
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0032",
+        "ep_syn0024"
+      ],
+      "n_expect": 5,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "测试时发现生成的内容在文档里根本找不到",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0013",
+        "ep_syn0028",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块的时候怎么让意思不被切断？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0018"
+      ],
+      "topk_ids": [
+        "ep_syn0025",
+        "ep_syn0167",
+        "ep_syn0023"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排响应延迟高，如何改善？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0019"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0024",
+        "ep_syn0029"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "机器人编造事实怎么解决？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0020"
+      ],
+      "topk_ids": [
+        "ep_syn0020",
+        "ep_syn0028",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块策略测试后准确率提升小，原因是什么？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0021",
+        "ep_syn0026",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "如何把PDF数据集成到我们的系统？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0022"
+      ],
+      "topk_ids": [
+        "ep_syn0022",
+        "ep_syn0167",
+        "ep_syn0033"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG系统里哪些地方可能让用户觉得慢？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0019",
+        "ep_syn0020"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0169",
+        "ep_syn0034"
+      ],
+      "n_expect": 2,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "文档里的代码和解释被切开了，问代码问题时检索效果差，怎么解决？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0023"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0025",
+        "ep_syn0018"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "医疗问答RAG的重排步骤让响应时间变慢了，有什么优化思路？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0024"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0029",
+        "ep_syn0034"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "固定大小分块导致长文档上下文断掉，小文档信息太杂，动态分块怎么做？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0025"
+      ],
+      "topk_ids": [
+        "ep_syn0025",
+        "ep_syn0018",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "调整分块参数后检索召回率提升了15%，具体是怎么调的？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0026"
+      ],
+      "topk_ids": [
+        "ep_syn0026",
+        "ep_syn0021",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "cross-encoder重排推理速度慢，每个查询200ms，怎么优化？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0027"
+      ],
+      "topk_ids": [
+        "ep_syn0027",
+        "ep_syn0003",
+        "ep_syn0019"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG系统的重排部分怎么优化速度和效果？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0026",
+        "ep_syn0027"
+      ],
+      "topk_ids": [
+        "ep_syn0032",
+        "ep_syn0034",
+        "ep_syn0027"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 3,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.3333333333333333,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG机器人有时会瞎编信息，怎么加个检查让输出更靠谱？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0028"
+      ],
+      "topk_ids": [
+        "ep_syn0020",
+        "ep_syn0028",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们的RAG系统回答太慢了，有什么办法提升响应速度？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0029"
+      ],
+      "topk_ids": [
+        "ep_syn0029",
+        "ep_syn0034",
+        "ep_syn0024"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG项目做了三个月，效果评估怎么样？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0030"
+      ],
+      "topk_ids": [
+        "ep_syn0030",
+        "ep_syn0169",
+        "ep_syn0021"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块太细导致召回内容断断续续，该怎么调整分块大小？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0031"
+      ],
+      "topk_ids": [
+        "ep_syn0026",
+        "ep_syn0018",
+        "ep_syn0025"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排模型用了bge-reranker但提升不大，可能是什么原因？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0032",
+        "ep_syn0169",
+        "ep_syn0027"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG系统中幻觉治理的措施有哪些？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0028",
+        "ep_syn0030"
+      ],
+      "topk_ids": [
+        "ep_syn0033",
+        "ep_syn0028",
+        "ep_syn0020"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG系统回答时老瞎编数据，比如乱给百分比，有啥办法治？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0033"
+      ],
+      "topk_ids": [
+        "ep_syn0033",
+        "ep_syn0169",
+        "ep_syn0028"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG服务上线后回答慢，监控显示分块和索引构建拖后腿，怎么优化延迟？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0034"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0021",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG回答比较类问题时总偏向后面那个实体，是不是重排有位置偏见？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0035"
+      ],
+      "topk_ids": [
+        "ep_syn0035",
+        "ep_syn0032",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "处理学术论文PDF时，分块老把公式拆开，检索效果差，IEEE格式更头疼，咋整？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0167"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0018",
+        "ep_syn0022"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "测试RAG问答机器人发现幻觉多，回答在文档里找不到，是不是分块策略有问题？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0030",
+        "ep_syn0021"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG系统在分块和索引方面有哪些优化经验？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0034",
+        "ep_syn0167",
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0021",
+        "ep_syn0023"
+      ],
+      "n_expect": 3,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "固定分块总断掉上下文，有什么灵活点的方法？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0018"
+      ],
+      "topk_ids": [
+        "ep_syn0025",
+        "ep_syn0026",
+        "ep_syn0011"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排那块跑得太慢了，有啥提速的招儿？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0019"
+      ],
+      "topk_ids": [
+        "ep_syn0019",
+        "ep_syn0169",
+        "ep_syn0032"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "机器人老瞎编技术文档里的东西，怎么治？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0020"
+      ],
+      "topk_ids": [
+        "ep_syn0020",
+        "ep_syn0169",
+        "ep_syn0030"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "试了新分块，但准确率没怎么涨，可能问题出在哪儿？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0021",
+        "ep_syn0169",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块策略效果不佳，有什么通用优化思路？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0018",
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0026",
+        "ep_syn0021"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 3,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.3333333333333333,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "得处理一堆PDF文件，有啥好用的库推荐吗？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0022"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0023",
+        "ep_syn0022"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 3,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.3333333333333333,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们那个技术文档的代码块老是被拆散，检索相关问题时效果很差，有啥好的分块办法吗？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0023"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0169",
+        "ep_syn0025"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们医疗问答的RAG重排步骤加上后变慢了，有啥办法优化一下速度？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0024"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0169",
+        "ep_syn0029"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "固定512 token分块，有些文档的上下文被切断了，回答支离破碎，怎么解决？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0025"
+      ],
+      "topk_ids": [
+        "ep_syn0025",
+        "ep_syn0031",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们的客服RAG之前分块后产品手册章节被切碎，调了分块参数和overlap之后，相关性评分从0.65到0.78。",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0026"
+      ],
+      "topk_ids": [
+        "ep_syn0026",
+        "ep_syn0023",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG重排用的cross-encoder推理太慢了，每个查询200ms，有啥优化手段？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0027"
+      ],
+      "topk_ids": [
+        "ep_syn0027",
+        "ep_syn0019",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们客服机器人总胡编乱造，客户投诉多，后来用了什么法子让准确率上去了？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0028"
+      ],
+      "topk_ids": [
+        "ep_syn0030",
+        "ep_syn0028",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "项目评估下来，各部分贡献多少？成本和收益呢？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0030"
+      ],
+      "topk_ids": [
+        "ep_syn0030",
+        "ep_syn0159",
+        "ep_syn0154"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块太小导致召回内容不连贯，怎么调整分块大小和重叠？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0031"
+      ],
+      "topk_ids": [
+        "ep_syn0025",
+        "ep_syn0018",
+        "ep_syn0023"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排用了bge-reranker但效果一般，可能问题出在哪？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0032",
+        "ep_syn0169",
+        "ep_syn0027"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG问答系统整体优化过程中，有哪些关键改进？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0028",
+        "ep_syn0029",
+        "ep_syn0030",
+        "ep_syn0031",
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0032",
+        "ep_syn0034",
+        "ep_syn0035"
+      ],
+      "n_expect": 5,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "如果RAG的回答总是自己加戏，编些不存在的数据，怎么治？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0033"
+      ],
+      "topk_ids": [
+        "ep_syn0033",
+        "ep_syn0035",
+        "ep_syn0020"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "用户说回答太慢，怎么优化RAG的响应时间？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0034"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0029",
+        "ep_syn0024"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "产品同事反馈说，在比较A和B时，系统老是偏爱B，这怎么解决？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0035"
+      ],
+      "topk_ids": [
+        "ep_syn0035",
+        "ep_syn0154",
+        "ep_syn0152"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "学术PDF的分块总破坏公式和引用的结构，怎么改进？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0167"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0025",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前聊过RAG的分块策略吗？有哪些优化思路？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0034",
+        "ep_syn0167",
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0167",
+        "ep_syn0034"
+      ],
+      "n_expect": 3,
+      "n_found": 3,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG问答机器人经常产生幻觉，有什么方法可以减少？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0020",
+        "ep_syn0028"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "长文档检索效果差，是不是分块方式有问题？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0018"
+      ],
+      "topk_ids": [
+        "ep_syn0018",
+        "ep_syn0169",
+        "ep_syn0023"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排模块太慢，有没有更快的模型推荐？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0019"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0019",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "回答里老是编造事实，怎么避免这种情况？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0020"
+      ],
+      "topk_ids": [
+        "ep_syn0020",
+        "ep_syn0028",
+        "ep_syn0009"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块策略改了但准确率没怎么提升，可能是什么原因？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0021",
+        "ep_syn0169",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "其他团队用PDF格式数据，我们怎么集成进来？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0022"
+      ],
+      "topk_ids": [
+        "ep_syn0022",
+        "ep_syn0167",
+        "ep_syn0166"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG问答机器人项目进展中遇到了哪些问题？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0018",
+        "ep_syn0019",
+        "ep_syn0020",
+        "ep_syn0021",
+        "ep_syn0022"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0030",
+        "ep_syn0028"
+      ],
+      "n_expect": 5,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前用 LangChain 的工具分块，发现技术文档里代码和说明老是被切开，问答效果不好，怎么调整能好点？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0023"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0026",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG线上环境用bge-reranker-base重排，延迟从300ms到500ms，有什么优化办法？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0024"
+      ],
+      "topk_ids": [
+        "ep_syn0019",
+        "ep_syn0024",
+        "ep_syn0027"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG项目文档分块大小固定效果不好，上下文容易断，有没有更灵活的分块策略？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0025"
+      ],
+      "topk_ids": [
+        "ep_syn0018",
+        "ep_syn0026",
+        "ep_syn0023"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "客服机器人分块太死板，把PDF手册章节切碎了，怎么改能让分块更智能些？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0026"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0026",
+        "ep_syn0022"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "cross-encoder重排每个查询200ms，并发高时是瓶颈，怎么加速？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0027"
+      ],
+      "topk_ids": [
+        "ep_syn0027",
+        "ep_syn0019",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "上次那个机器人瞎编答案被客户骂了，后来是怎么解决这个毛病来着",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0028"
+      ],
+      "topk_ids": [
+        "ep_syn0020",
+        "ep_syn0028",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "用户说响应太慢，最后是怎么把速度提上来的",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0029"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0029",
+        "ep_syn0024"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "那个RAG项目最后算下来账，投入产出比怎么样，具体指标都是多少",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0030"
+      ],
+      "topk_ids": [
+        "ep_syn0030",
+        "ep_syn0169",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "咱们RAG这块儿的问答机器人效果评估，除了准确率还看了些啥指标",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0028",
+        "ep_syn0029",
+        "ep_syn0030"
+      ],
+      "topk_ids": [
+        "ep_syn0030",
+        "ep_syn0021",
+        "ep_syn0169"
+      ],
+      "n_expect": 3,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "文档切得太碎导致召回内容不连贯，这个问题后来怎么优化的",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0031"
+      ],
+      "topk_ids": [
+        "ep_syn0031",
+        "ep_syn0167",
+        "ep_syn0013"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "用了bge-reranker效果没啥提升，这可能是什么原因，又该怎么试",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0032",
+        "ep_syn0169",
+        "ep_syn0027"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG 回答时瞎编数据怎么解决？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0033"
+      ],
+      "topk_ids": [
+        "ep_syn0020",
+        "ep_syn0033",
+        "ep_syn0028"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG 首次响应慢得离谱，怎么优化？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0034"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0029",
+        "ep_syn0024"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "比较问题回答总偏向后面那个，怎么办？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0035"
+      ],
+      "topk_ids": [
+        "ep_syn0035",
+        "ep_syn0032",
+        "ep_syn0020"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "处理学术PDF分块总切断公式，有啥好办法？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0167"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0022",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG 机器人回答不相关，怎么提升效果？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0167",
+        "ep_syn0030"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块策略有什么好的实践？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0167",
+        "ep_syn0034"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0167",
+        "ep_syn0023"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们那个问答机器人的文档分块老是把意思给切断了，有没有什么更好的分法？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0018"
+      ],
+      "topk_ids": [
+        "ep_syn0018",
+        "ep_syn0167",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排模块太慢了，用户都在抱怨，有什么办法能让它快起来？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0019"
+      ],
+      "topk_ids": [
+        "ep_syn0019",
+        "ep_syn0169",
+        "ep_syn0034"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "机器人老是瞎编事实，这可咋整？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0020"
+      ],
+      "topk_ids": [
+        "ep_syn0020",
+        "ep_syn0169",
+        "ep_syn0028"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "新的分块方法试了，效果提升不大，该怎么分析？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0021",
+        "ep_syn0167",
+        "ep_syn0018"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "其他团队想用我们的系统，但他们的文件是PDF格式，这怎么弄？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0022"
+      ],
+      "topk_ids": [
+        "ep_syn0022",
+        "ep_syn0167",
+        "ep_syn0190"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "文档分块相关的讨论都涉及了哪些方面？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0018",
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0018",
+        "ep_syn0021"
+      ],
+      "n_expect": 2,
+      "n_found": 2,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "关于重排模块的讨论",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0019",
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0019",
+        "ep_syn0168"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "技术文档里代码块和注释经常被切分，导致问代码时检索效果不好，怎么解决的",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0023"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0025",
+        "ep_syn0018"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "医疗问答的重排序步骤太慢了，从300毫秒涨到500毫秒，怎么加速",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0024"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0019",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "固定大小分块效果不稳定，长文档上下文被切断，小文档信息太杂，怎么动态分块",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0025"
+      ],
+      "topk_ids": [
+        "ep_syn0025",
+        "ep_syn0018",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "客服问答系统的PDF文档分块后章节被切碎，语义不连贯，怎么优化分块参数",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0026"
+      ],
+      "topk_ids": [
+        "ep_syn0026",
+        "ep_syn0167",
+        "ep_syn0023"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "cross-encoder重排每个查询要200毫秒，推理太慢，有什么提速技巧",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0027"
+      ],
+      "topk_ids": [
+        "ep_syn0027",
+        "ep_syn0019",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "文档分块有哪些优化方法",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0023",
+        "ep_syn0025",
+        "ep_syn0026"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0018",
+        "ep_syn0026"
+      ],
+      "n_expect": 3,
+      "n_found": 2,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前客服抱怨机器人胡说八道，你们是怎么处理幻觉问题的？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0028"
+      ],
+      "topk_ids": [
+        "ep_syn0028",
+        "ep_syn0030",
+        "ep_syn0020"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "用户抱怨响应慢，你们后来加缓存了吗？效果怎么样？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0029"
+      ],
+      "topk_ids": [
+        "ep_syn0029",
+        "ep_syn0163",
+        "ep_syn0024"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG项目做了三个月，最后效果怎么样？成本呢？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0030"
+      ],
+      "topk_ids": [
+        "ep_syn0030",
+        "ep_syn0169",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块太小导致召回片段不完整，怎么调整分块大小？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0031"
+      ],
+      "topk_ids": [
+        "ep_syn0025",
+        "ep_syn0031",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "用了bge-reranker但效果不明显，可能是什么原因？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0032",
+        "ep_syn0169",
+        "ep_syn0027"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG问答系统有哪些常见的优化方向？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0028",
+        "ep_syn0029",
+        "ep_syn0030",
+        "ep_syn0031",
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0032",
+        "ep_syn0035"
+      ],
+      "n_expect": 5,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "上次聊到RAG系统会编造数据，有什么办法能避免这种情况？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0033"
+      ],
+      "topk_ids": [
+        "ep_syn0033",
+        "ep_syn0167",
+        "ep_syn0028"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG服务第一个响应特别慢，怎么优化检索延迟？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0034"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0169",
+        "ep_syn0024"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "在比较问题上，RAG回答总是偏向最后一个选项，有解决办法吗？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0035"
+      ],
+      "topk_ids": [
+        "ep_syn0035",
+        "ep_syn0169",
+        "ep_syn0020"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "处理PDF论文时，分块经常把公式拆开，怎么改进分块策略？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0167"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0026",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG问答机器人生成的内容在文档里找不到，怎么减少这种幻觉？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0028",
+        "ep_syn0020"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "有没有聊过分块大小对RAG性能的影响？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0034",
+        "ep_syn0167",
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0025",
+        "ep_syn0023",
+        "ep_syn0018"
+      ],
+      "n_expect": 3,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前咱们聊过文档分块，长文档的检索效果总是不理想，有什么办法能改善吗",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0018"
+      ],
+      "topk_ids": [
+        "ep_syn0018",
+        "ep_syn0023",
+        "ep_syn0021"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "咱们那个机器人的排序模块响应太慢了，有更快的方案吗",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0019"
+      ],
+      "topk_ids": [
+        "ep_syn0019",
+        "ep_syn0167",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "用户说机器人瞎编事实，这个问题之前怎么讨论的来着",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0020"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0020",
+        "ep_syn0028"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块策略改了之后效果提升不大，该怎么分析这个情况",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0021",
+        "ep_syn0167",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "怎么让其他团队的数据，比如PDF，能顺利接到咱们的问答系统里",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0022"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0022",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "文档分块这个功能最近有什么进展或者调整吗",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0018",
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0026",
+        "ep_syn0021",
+        "ep_syn0018"
+      ],
+      "n_expect": 2,
+      "n_found": 2,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "文档分块时代码和解释被切开，检索效果差，后来怎么改进分隔符的？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0023"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0018",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "医疗问答系统加了重排后响应变慢，有哪些优化延迟的方法？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0024"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0034",
+        "ep_syn0032"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "固定大小分块导致文档语义断开，怎么实现基于边界的动态分块？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0025"
+      ],
+      "topk_ids": [
+        "ep_syn0025",
+        "ep_syn0018",
+        "ep_syn0011"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "客服问答机器人分块后检索召回率提升了，具体怎么设置分块参数和重排的？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0026"
+      ],
+      "topk_ids": [
+        "ep_syn0026",
+        "ep_syn0167",
+        "ep_syn0021"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排序模型在并发高时推理慢，如何通过参数调整加速？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0027"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0027",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG 系统中文档分块有哪些常见优化策略？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0023",
+        "ep_syn0025",
+        "ep_syn0026"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0018",
+        "ep_syn0026"
+      ],
+      "n_expect": 3,
+      "n_found": 2,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "客服说机器人回答瞎编，怎么治这个毛病",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0028"
+      ],
+      "topk_ids": [
+        "ep_syn0028",
+        "ep_syn0030",
+        "ep_syn0020"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "系统老卡，有没有优化响应速度的法子",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0029"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0029",
+        "ep_syn0042"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "这项目做完，最后指标怎么样，客户买不买账",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0030"
+      ],
+      "topk_ids": [
+        "ep_syn0030",
+        "ep_syn0160",
+        "ep_syn0189"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我那分块太碎了，召回的内容都不连贯，咋整",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0031"
+      ],
+      "topk_ids": [
+        "ep_syn0031",
+        "ep_syn0167",
+        "ep_syn0023"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "试了个重排模型，但回答质量没明显变好，为啥",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0032",
+        "ep_syn0169",
+        "ep_syn0019"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "系统性能这块，缓存和降级这些优化手段怎么样",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0029",
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0029",
+        "ep_syn0024",
+        "ep_syn0043"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG生成时老是自己编数据，有啥办法能治这毛病？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0033"
+      ],
+      "topk_ids": [
+        "ep_syn0033",
+        "ep_syn0167",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "我们RAG首答巨慢，监控说是分块和索引那步拖了后腿，怎么搞快点？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0034"
+      ],
+      "topk_ids": [
+        "ep_syn0034",
+        "ep_syn0169",
+        "ep_syn0021"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块那块儿有什么优化思路不？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0034",
+        "ep_syn0167"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0034",
+        "ep_syn0023"
+      ],
+      "n_expect": 2,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG回答比较题时老是偏向后一个选项，怎么纠偏？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0035"
+      ],
+      "topk_ids": [
+        "ep_syn0035",
+        "ep_syn0169",
+        "ep_syn0032"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "处理IEEE论文PDF时分块老把公式和引用拆开，咋整？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0167"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0022",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "语义分块计算成本高，RAG效果还是不理想，除了加重排还有啥招？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0167",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前文档分块用固定大小效果不好，后来改用什么方法？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0018"
+      ],
+      "topk_ids": [
+        "ep_syn0018",
+        "ep_syn0026",
+        "ep_syn0025"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "用户抱怨重排模块响应慢，怎么优化？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0019"
+      ],
+      "topk_ids": [
+        "ep_syn0019",
+        "ep_syn0034",
+        "ep_syn0029"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "机器人经常编造事实，有什么办法减少这种情况？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0020"
+      ],
+      "topk_ids": [
+        "ep_syn0020",
+        "ep_syn0169",
+        "ep_syn0028"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "新分块策略测试后准确率提升大吗？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0021",
+        "ep_syn0169",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "其他团队发来的PDF文件怎么处理才能集成？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0022"
+      ],
+      "topk_ids": [
+        "ep_syn0022",
+        "ep_syn0190",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "文档分块方面，我们讨论了哪些改进？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0018",
+        "ep_syn0021"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0021",
+        "ep_syn0018"
+      ],
+      "n_expect": 2,
+      "n_found": 2,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前分块总把代码和注释切开，怎么调整才能让代码检索更准？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0023"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0169",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排模型太慢，怎么优化才能不影响准确性？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0024"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0034",
+        "ep_syn0019"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "文档分块大小固定效果不好，有没有更智能的分块方法？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0025"
+      ],
+      "topk_ids": [
+        "ep_syn0018",
+        "ep_syn0025",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "PDF文档切分后语义断开，怎么设置参数能让检索更连贯？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0026"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0026",
+        "ep_syn0025"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "重排步骤太耗时，怎么调整能加快速度而不损失太多精度？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0027"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0034",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "有没有聊过文档分块的优化技巧？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0023",
+        "ep_syn0025",
+        "ep_syn0026"
+      ],
+      "topk_ids": [
+        "ep_syn0026",
+        "ep_syn0018",
+        "ep_syn0023"
+      ],
+      "n_expect": 3,
+      "n_found": 2,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "咱们那个RAG机器人老是胡编乱造，后来是怎么搞定的",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0028"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0169",
+        "ep_syn0028"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 3,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.3333333333333333,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG系统响应太慢，用户都在抱怨了，后来怎么优化的",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0029"
+      ],
+      "topk_ids": [
+        "ep_syn0024",
+        "ep_syn0034",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "做了三个月的RAG项目，最终效果数据怎么样？",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0030"
+      ],
+      "topk_ids": [
+        "ep_syn0030",
+        "ep_syn0169",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "分块太小，召回的段落很碎，句子都不完整，有什么办法",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0031"
+      ],
+      "topk_ids": [
+        "ep_syn0031",
+        "ep_syn0167",
+        "ep_syn0165"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "RAG系统里那个重排的环节，试了bge-reranker觉得没啥用，可能哪里有问题",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0032",
+        "ep_syn0169",
+        "ep_syn0024"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "咱们RAG的整体架构是怎么设计和优化的？",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0029",
+        "ep_syn0030",
+        "ep_syn0031",
+        "ep_syn0032"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0020",
+        "ep_syn0034"
+      ],
+      "n_expect": 4,
+      "n_found": 0,
+      "best_rank": null,
+      "hit1": false,
+      "hitk": false,
+      "rr": 0.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "之前RAG回答老是瞎编数据，怎么让它只看文档说话",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0033"
+      ],
+      "topk_ids": [
+        "ep_syn0033",
+        "ep_syn0167",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "上线后用户抱怨回复慢，主要是卡在哪一步了",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0034"
+      ],
+      "topk_ids": [
+        "ep_syn0189",
+        "ep_syn0034",
+        "ep_syn0161"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "回答‘比较类’问题时总偏向后面那个，怎么调整一下",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0035"
+      ],
+      "topk_ids": [
+        "ep_syn0035",
+        "ep_syn0032",
+        "ep_syn0169"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "处理那种带公式的双栏PDF，分块总出问题",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0167"
+      ],
+      "topk_ids": [
+        "ep_syn0167",
+        "ep_syn0022",
+        "ep_syn0026"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "回答经常编造文档里没有的内容，分块怎么做能减少这种幻觉",
+      "mode": "episode",
+      "type": "semantic",
+      "negative": false,
+      "expect": [
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0169",
+        "ep_syn0033",
+        "ep_syn0167"
+      ],
+      "n_expect": 1,
+      "n_found": 1,
+      "best_rank": 1,
+      "hit1": true,
+      "hitk": true,
+      "rr": 1.0,
+      "n_false": null,
+      "clean": null
+    },
+    {
+      "query": "在搭建RAG系统时，分块策略有哪些优化经验",
+      "mode": "episode",
+      "type": "multi",
+      "negative": false,
+      "expect": [
+        "ep_syn0167",
+        "ep_syn0169"
+      ],
+      "topk_ids": [
+        "ep_syn0023",
+        "ep_syn0169",
+        "ep_syn0167"
+      ],
+      "n_expect": 2,
+      "n_found": 2,
+      "best_rank": 2,
+      "hit1": false,
+      "hitk": true,
+      "rr": 0.5,
+      "n_false": null,
+      "clean": null
+    }
+  ],
+  "manifest": null
+}
