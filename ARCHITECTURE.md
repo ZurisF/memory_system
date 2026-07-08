@@ -222,7 +222,13 @@ Phase 2 `s6_phase2_build.md`),此处只留架构地图。
 - **逃生口与控制台**:`--json` = 结构化契约(不调 LLM)、`--raw` = 人类可读渲染(调试);
   `/api/agent/config` recall 节管 model + provider(GET 如实回 override 原值,POST 以
   `"provider" in body` 区分「未传」与「传空串清 override」;删 custom provider 连带清悬空
-  recall_provider);`/api/recall` + 前端召回屏走同一引擎(touch 默认 false)。
+  recall_provider);`/api/recall` + 前端召回屏走同一引擎(touch 默认 false;可选 `user_query`
+  = 模拟当轮 query,只喂重构,空则沿用检索词——检索词与用户真实问话经常不同,调 prompt 用)。
+- **重构输入四部分**(2026-07-07,原三部分):system prompt + 结构化检索结果 + **当前时间**
+  + 用户当轮 query。当前时间是 prompt 时间感两档规则(月内相对轴/更远模糊时段)的依据;
+  三份重构 prompt(episode/concept/opening)同日重写:第一人称人称锚(材料里 Claude=我、
+  zuris=你)、敢扔敢联想与诚实空手、好坏示例。长度旋钮住在 prompt 文本里(控制台可在线改),
+  opening 载荷的 token_budget 字段 prompt 不再引用。
 - **红线**:所有对外输出手工挑字段,只 public_id / node label,无 uuid/向量/DB 整数 id;
   所有排序带 tie-break(public_id/created_at),同库同 query 可重放。
 - **评测**:`eval/queries.jsonl` + `scripts/eval_recall.py`(hit@k、`--param` A/B、

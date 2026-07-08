@@ -2,8 +2,10 @@
 
 /* recall.js —— 召回屏(S6 三路检索 + 可选重构)。
  *
- * API: POST /api/recall {mode, query, context?, touch, reconstruct, since?, until?}
+ * API: POST /api/recall {mode, query, context?, touch, reconstruct, since?, until?, user_query?}
  *      → {structured, reconstruction, error}
+ * user_query = 模拟当轮 query(可选,只喂重构):检索词和用户真实问话经常不同,
+ * 重构 prompt 以后者为核心取舍;detail 不接重构,该框隐藏。空 = 沿用检索词。
  *
  * 左栏 = 结构化(episode 三槽卡片 / detail 命中开窗 / concept node+episodes,miss 显建议);
  * 右栏 = 重构(仅 episode/concept 可点,原样重发上次查询参数 + reconstruct:true)。
@@ -14,6 +16,7 @@
 var modeSel = document.getElementById("rc-mode");
 var queryInp = document.getElementById("rc-query");
 var contextInp = document.getElementById("rc-context");
+var uqueryInp = document.getElementById("rc-uquery");
 var sinceInp = document.getElementById("rc-since");
 var untilInp = document.getElementById("rc-until");
 var touchChk = document.getElementById("rc-touch");
@@ -128,6 +131,7 @@ function rcRenderStructured(s) {
 function rcOnModeChange() {
   var mode = modeSel.value;
   contextInp.style.display = mode === "concept" ? "" : "none";
+  uqueryInp.style.display = mode === "detail" ? "none" : "";
   sinceInp.style.display = mode === "detail" ? "" : "none";
   untilInp.style.display = mode === "detail" ? "" : "none";
 }
@@ -145,6 +149,7 @@ async function rcRunQuery() {
   if (!query) { toast("检索词不能为空", true); return; }
   var body = { mode: mode, query: query, touch: !!touchChk.checked, reconstruct: false };
   if (mode === "concept" && contextInp.value.trim()) body.context = contextInp.value.trim();
+  if (mode !== "detail" && uqueryInp.value.trim()) body.user_query = uqueryInp.value.trim();
   if (mode === "detail") {
     if (sinceInp.value.trim()) body.since = sinceInp.value.trim();
     if (untilInp.value.trim()) body.until = untilInp.value.trim();
@@ -173,6 +178,9 @@ async function rcRunReconstruct() {
   if (mode !== "episode" && mode !== "concept") { toast("细节检索不接重构", true); return; }
   if (!rcHasHits(mode, ST.rcStructured)) { toast("无命中结果,无可重构", true); return; }
   var body = Object.assign({}, ST.rcReq, { reconstruct: true });
+  // 模拟当轮 query 取输入框当前值:查询一次后改它、直接点「重构」即生效(调 prompt 的迭代路径)。
+  var uq = uqueryInp.value.trim();
+  if (uq) body.user_query = uq; else delete body.user_query;
   await once("rc-recon", async function () {
     var r = await postJSON("/api/recall", body);
     if (r.structured != null) {
@@ -205,5 +213,6 @@ if (modeSel && runBtn) {
   runBtn.addEventListener("click", rcRunQuery);
   queryInp.addEventListener("keydown", function (ev) { if (ev.key === "Enter") rcRunQuery(); });
   contextInp.addEventListener("keydown", function (ev) { if (ev.key === "Enter") rcRunQuery(); });
+  uqueryInp.addEventListener("keydown", function (ev) { if (ev.key === "Enter") rcRunQuery(); });
   reconBtn.addEventListener("click", rcRunReconstruct);
 }

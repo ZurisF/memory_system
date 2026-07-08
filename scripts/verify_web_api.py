@@ -325,6 +325,14 @@ def verify_recall_api() -> None:
         assert rc2["structured"]["slots"]["primary"][0]["public_id"] == "ep_rcep0001", rc2
         ok("POST /api/recall episode reconstruct=true:fake chat 返回非空文本")
 
+        # (2') user_query(模拟当轮 query)被接受:只喂重构,检索结果不受影响
+        rc2b = _post(base, "/api/recall", {"mode": "episode", "query": "召回屏门测试概览",
+                                           "reconstruct": True, "user_query": "我们当时聊了什么?"})
+        assert rc2b.get("error") is None, rc2b
+        assert isinstance(rc2b.get("reconstruction"), str) and rc2b["reconstruction"].strip(), rc2b
+        assert rc2b["structured"]["slots"]["primary"][0]["public_id"] == "ep_rcep0001", rc2b
+        ok("POST /api/recall episode + user_query:模拟当轮 query 被接受,检索不受影响")
+
         # (3) detail + reconstruct → 400(细节不接重构)
         st_d, rc3 = _post_status(base, "/api/recall", {"mode": "detail", "query": "召回门专用短语",
                                                         "reconstruct": True})

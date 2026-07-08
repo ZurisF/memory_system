@@ -22,7 +22,7 @@ API:
   POST /api/staging/delete {path|session_id, stage_id}  干净删除未入库 staging 条目(不留痕)
   POST /api/staging/retry/clear {session_id|path, seg_ids}  关闭/忽略提取失败卡(清 retry 记录)
   POST /api/memory/edit {public_id, fields}  编辑已入库 episode 的正文四件(改 overview 重嵌)
-  POST /api/recall   {mode, query, context?, touch, reconstruct, since?, until?}  三路检索(+可选重构)
+  POST /api/recall   {mode, query, context?, touch, reconstruct, since?, until?, user_query?}  三路检索(+可选重构)
   DELETE /api/memory?public_id=...  真删一条 episode(碎片正本 + DB;孤儿 node 保留并回报)
   DELETE /api/node?label=...        真删一个 node(碎片 + DB;并从引用它的 episode 碎片摘除)
 """
@@ -856,7 +856,10 @@ def make_handler(cfg: Config):
 
         # ---- 召回屏(S6 三路检索 + 可选重构)----
         def _api_recall(self, body) -> None:
-            """三路检索。body: {mode, query, context?, touch:false, reconstruct:false, since?, until?}。
+            """三路检索。body: {mode, query, context?, touch:false, reconstruct:false, since?, until?, user_query?}。
+
+            user_query(可选)= 模拟当轮 query:检索词与用户真实问话经常不同,重构 prompt
+            以后者为核心取舍;召回屏调 prompt 时用它测这个差异。空 = 沿用检索词(现状)。
 
             响应恒为 {"structured":…, "reconstruction": 文本|null, "error": 人读消息|null}:
             - touch 默认 false(召回屏默认只读窥视,勾「刷时钟」才透传 true);
@@ -921,9 +924,11 @@ def make_handler(cfg: Config):
                 if not has_hits:
                     err = "无命中结果,无可重构"
                 else:
-                    # concept 的当轮 query 拼语境,照 CLI _recall_concept 惯例。
-                    user_query = query if mode == "episode" or not context \
-                        else f"{query}(语境: {context})"
+                    # 模拟当轮 query 给了就原样当用户问话;否则沿用检索词
+                    # (concept 拼语境,照 CLI _recall_concept 惯例)。
+                    sim = _opt("user_query")
+                    user_query = sim or (query if mode == "episode" or not context
+                                         else f"{query}(语境: {context})")
                     setup_logging(cfg.logs_dir)  # reconstruct 要写候选集日志(召回可重放)
                     try:
                         reconstruction = reconstruct.run(cfg, mode, structured, user_query)
