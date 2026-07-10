@@ -206,9 +206,9 @@ def make_handler(cfg: Config):
                 return self._json({"error": str(e)}, _provider_error_status(e))
             self._json({"ok": True, **report})
 
-        # ---- 过程 prompt 正本(切块/提取/重构)----
+        # ---- 过程 prompt 正本(切块/提取/重构/选路)----
         def _api_prompts(self) -> None:
-            """列出五个过程 prompt 正本(键/所属过程/内容)。正本是文件、不进 DB。"""
+            """列出八个过程 prompt 正本(键/所属过程/内容)。正本是文件、不进 DB。"""
             from memory_system import prompt_store
 
             self._json({"prompts": prompt_store.list_prompts(),
@@ -217,8 +217,9 @@ def make_handler(cfg: Config):
         def _api_save_prompt(self, body) -> None:
             """写回一个过程 prompt 正本。白名单外的 name / 空 content → 400。
 
-            切块/提取的 prompt 加载有 @lru_cache,prompt_store.write_prompt 写盘后即清缓存,
-            故改完即时生效、无需重启;重构每次现读。回最新的五键列表供前端刷新。
+            切块/提取的 prompt 加载有 @lru_cache,prompt_store.write_prompt 写盘后即清缓存;
+            重构与 MCP tools/list 每次现读。回最新的八键列表供前端刷新。MCP 客户端通常
+            缓存 tools/list,故选路描述一般在下一次会话生效。
             """
             from memory_system import prompt_store
 

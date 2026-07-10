@@ -225,14 +225,22 @@ def main() -> None:
         # prompt 正本在 git 仓库的包目录(非临时 home);测试改动后必须在 finally 回写原文。
         orig_prompts = {p["name"]: p["content"] for p in prompt_store.list_prompts()}
         EXPECT_KEYS = {"chunk_system", "extract_system", "recall_episode_system",
-                       "recall_concept_system", "opening_system"}
+                       "recall_concept_system", "opening_system", "tool_episode_desc",
+                       "tool_detail_desc", "tool_concept_desc"}
 
         listed = _get(base, "/api/prompts")
         got_keys = {p["name"] for p in listed["prompts"]}
         assert got_keys == EXPECT_KEYS, got_keys
-        assert all(p["content"].strip() for p in listed["prompts"]), "五个 prompt 内容不应为空"
-        assert {p["process"] for p in listed["prompts"]} == {"chunk", "extract", "recall"}, listed
-        ok("GET /api/prompts:五键齐全,含所属过程与内容")
+        assert all(p["content"].strip() for p in listed["prompts"]), "八个 prompt 内容不应为空"
+        assert {p["process"] for p in listed["prompts"]} == {
+            "chunk", "extract", "recall", "mcp"
+        }, listed
+        assert listed["process_labels"]["mcp"] == "选路", listed
+        assert all(
+            p["process_label"] == listed["process_labels"][p["process"]]
+            for p in listed["prompts"]
+        ), listed
+        ok("GET /api/prompts:八键齐全,含 mcp/选路 标签与非空内容")
 
         # 缓存即时生效证明:先触发 chunk prompt 的 lru_cache(载入原值),POST 新值后应立即读到新值
         cached_before = load_chunk_prompt()
@@ -245,6 +253,24 @@ def main() -> None:
         assert _get(base, "/api/prompts")
         assert load_chunk_prompt() == new_body, "写回后 lru_cache 应已失效并读到新值(即时生效)"
         ok("POST /api/prompts:改一个再读回一致,且 lru_cache 已即时刷新")
+
+        # MCP 选路描述也走同一个白名单与 tmp+os.replace 原子写;POST 后文件与 API 立即可见。
+        desc_path = Path(prompt_store.__file__).resolve().parent / "prompts" / "tool_episode_desc.txt"
+        inode_before = desc_path.stat().st_ino
+        new_desc = orig_prompts["tool_episode_desc"].rstrip("\n") + \
+            "\nverify_web_api 原子写标记\n"
+        saved_desc = _post(base, "/api/prompts", {
+            "name": "tool_episode_desc", "content": new_desc
+        })
+        assert saved_desc.get("ok"), saved_desc
+        desc_roundtrip = next(
+            p for p in saved_desc["prompts"] if p["name"] == "tool_episode_desc"
+        )
+        assert desc_roundtrip["content"] == new_desc
+        assert desc_path.read_text(encoding="utf-8") == new_desc
+        assert desc_path.stat().st_ino != inode_before, "tmp+os.replace 应以新 inode 原子替换正本"
+        assert not desc_path.with_suffix(desc_path.suffix + ".tmp").exists()
+        ok("POST /api/prompts:选路描述原子写生效,无残留 tmp")
 
         # 白名单外的 name → 400(堵越权 / 路径穿越)
         st_bad, bad = _post_status(base, "/api/prompts",

@@ -632,8 +632,8 @@ var Console = (function () {
     renderPrompts();
   }
 
-  var PROC_ORDER = ["chunk", "extract", "recall"];
-  var PROC_LABELS = { chunk: "切块", extract: "提取", recall: "重构" };
+  var PROC_ORDER = ["chunk", "extract", "recall", "mcp"];
+  var PROC_LABELS = { chunk: "切块", extract: "提取", recall: "重构", mcp: "选路" };
 
   function renderPrompts() {
     var el = document.getElementById("cfg-prompts");
@@ -644,7 +644,7 @@ var Console = (function () {
       return;
     }
     var html = '<div class="cfg" id="cfg-prompt-box">';
-    html += cardHead("过程 Prompt", "切块 / 提取 / 重构的 system prompt 正本 · 改完即时生效", true, String(PROMPTS.length));
+    html += cardHead("过程 Prompt", "切块 / 提取 / 重构 / 选路的 prompt 正本 · MCP 客户端通常缓存 tools/list，选路编辑后下一次会话生效", true, String(PROMPTS.length));
     html += '<div class="cfg-body">';
     html += '<div class="cfg-row"><span class="cfg-k">选择</span>';
     html += '<select class="inp" id="prompt-pick" style="width:auto;min-width:300px">';
@@ -742,8 +742,11 @@ var Console = (function () {
       if (r.ok) {
         if (r.prompts) PROMPTS = r.prompts;  // 用服务端回读的最新正本更新本地缓存
         promptDirty = false;
-        if (statusEl) { statusEl.textContent = "✓ 已保存,即时生效"; statusEl.style.color = "var(--claude)"; }
-        toast(curPrompt + " prompt 已保存,即时生效");
+        var savedPrompt = promptByName(curPrompt);
+        var mcpHint = savedPrompt && savedPrompt.process === "mcp";
+        var effectText = mcpHint ? "客户端下一次会话生效" : "即时生效";
+        if (statusEl) { statusEl.textContent = "✓ 已保存," + effectText; statusEl.style.color = "var(--claude)"; }
+        toast(curPrompt + " prompt 已保存," + effectText);
       }
     }, btn);
   }

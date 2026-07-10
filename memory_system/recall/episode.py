@@ -101,6 +101,7 @@ def recall_episode(
     touch: bool = True,
     now: datetime | None = None,
     session_key: str | None = None,
+    injected_tool: str = "episode",
 ) -> dict:
     """情景检索。返回 §5 episode 契约:{mode, query, frame_nodes, slots:{primary/same_source/associative}}。
 
@@ -112,6 +113,7 @@ def recall_episode(
       - 非空:同 session 已注入的 public_id 从**三槽全部**候选硬排除(去重,dedup_session 总开关);
         其他 session 在 cooldown_hours 窗口内注入过的候选 relevance 钳非负后乘 cooldown_factor(冷却,温和降序);
         且 touch=True 时把返回三槽全部 public_id 写 injected_log(hit_at=now),与时钟刷新同一事务。
+        `injected_tool` 只标记注入来源;CLI 默认维持 episode,MCP 传完整 tool 名。
     """
     rc = cfg.recall
     now = now or datetime.now(timezone.utc)
@@ -328,8 +330,8 @@ def recall_episode(
                 hit_at = now_aware.isoformat()
                 con.executemany(
                     "INSERT INTO injected_log(session_key, public_id, tool, hit_at) "
-                    "VALUES (?, ?, 'episode', ?)",
-                    [(session_key, pid, hit_at) for pid in inj_pids])
+                    "VALUES (?, ?, ?, ?)",
+                    [(session_key, pid, injected_tool, hit_at) for pid in inj_pids])
             con.commit()
     finally:
         con.close()

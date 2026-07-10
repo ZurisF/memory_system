@@ -236,6 +236,13 @@ def cmd_serve(cfg: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_mcp(cfg: Config, args: argparse.Namespace) -> int:
+    from memory_system.mcp_server import serve
+
+    serve(cfg)
+    return 0
+
+
 def cmd_chunk(cfg: Config, args: argparse.Namespace) -> int:
     from dataclasses import replace
     from pathlib import Path
@@ -753,6 +760,8 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("--host", default="127.0.0.1")
     sv.add_argument("--port", type=int, default=8765)
     sv.set_defaults(func=cmd_serve)
+
+    sub.add_parser("mcp", help="启动 stdio MCP recall tools").set_defaults(func=cmd_mcp)
 
     ck = sub.add_parser("chunk", help="切块(Prompt 1):调 agent 建议分段,落工作文件")
     ck.add_argument("path", help="jsonl 路径")
