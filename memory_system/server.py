@@ -30,17 +30,15 @@ API:
 from __future__ import annotations
 
 import json
-from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from memory_system import preview_cache, processed, segments_store
-from memory_system.agent import probe_provider, registry
+from memory_system.agent import probe_provider, provider_admin, registry
 from memory_system.config import Config
 from memory_system.db import migrate
 from memory_system.db.connection import connect
-from memory_system.env import update_dotenv
 from memory_system.transcript import describe, discover
 from memory_system.ui_shape import ui_doc, ui_staging
 
@@ -55,9 +53,9 @@ _STATIC_TYPES = {
 # extract.extract_segments)。保守取 4——够提速,又不至于把 claude_cli 子进程 / API 速率打爆。
 EXTRACT_MAX_WORKERS = 4
 
-# provider 知识(内置目录 / 自定义增删 / 可用性 / key 状态 / 掩码 / 占位 key)统一在
-# memory_system.agent.registry;.env 写回在 env.update_dotenv;送前端的 uuid 剥离在
-# ui_shape;探活在 embedding.probe / agent.probe_provider。本文件只做 HTTP 编排。
+# provider 目录知识在 agent.registry,配置管理和热状态在 agent.provider_admin;
+# 送前端的工作态 uuid 剥离在 ui_shape;探活在 embedding.probe / agent.probe_provider。
+# 本文件只做 HTTP 编排。
 
 
 def _raw_grep(path: Path, needle: str) -> bool:
@@ -74,6 +72,19 @@ def _raw_grep(path: Path, needle: str) -> bool:
 
 
 def make_handler(cfg: Config):
+    provider_admin.initialize_runtime(cfg)
+
+    def _provider_error_status(error: provider_admin.ProviderAdminError) -> int:
+        if isinstance(error, provider_admin.ProviderForbiddenError):
+            return 403
+        if isinstance(error, provider_admin.ProviderNotFoundError):
+            return 404
+        if isinstance(error, provider_admin.ProviderConflictError):
+            return 409
+        if isinstance(error, provider_admin.ProviderPersistenceError):
+            return 500
+        return 400
+
     def _valid_session_id(raw: object) -> str | None:
         sid = str(raw or "").strip()
         if not sid or "/" in sid or "\\" in sid or ".." in sid:
@@ -132,11 +143,7 @@ def make_handler(cfg: Config):
             if u.path == "/api/transcript":
                 return self._api_transcript(parse_qs(u.query))
             if u.path == "/api/agent/providers":
-                return self._json({"providers": registry.providers_info(cfg),
-                                   "chunk_model": cfg.agent.chunk_model,
-                                   "extract_model": cfg.agent.extract_model,
-                                   "chunk_provider": cfg.agent.provider_for("chunk"),
-                                   "extract_provider": cfg.agent.provider_for("extract")})
+                return self._json(provider_admin.get_provider_listing(cfg))
             if u.path == "/api/agent/config":
                 return self._api_agent_config()
             if u.path == "/api/segments":
@@ -185,120 +192,19 @@ def make_handler(cfg: Config):
             self._json(nd)
 
         def _api_agent_config(self) -> None:
-            """控制台:各 agent 角色的 provider/模型/key 状态(密文掩码,绝不回明文)。
-            每次调用重新同步 .env,确保手动编辑 .env 后 key 状态即时刷新。"""
-            import os as _os2
-            from memory_system.env import load_dotenv
-
-            # 重新加载 .env:只刷新「本来就来自 .env 的键」(env._dotenv_owned),
-            # shell export 的真 key 永不被 .env 的占位/旧值覆盖(修复:旧代码
-            # override=True 会让打开一次控制台就把 export 的真 key 冲成占位 key)。
-            load_dotenv(cfg.home / ".env")
-            # 同步更新内存 cfg 的 custom_providers(可能刚通过控制台添加/删除)。
-            # cfg.agent 热改统一在 CUSTOM_LOCK 下做,防多线程用陈旧快照互相覆盖。
-            with registry.CUSTOM_LOCK:
-                new_cp = registry.custom_map(cfg.home)
-                if new_cp != cfg.agent.custom_providers:
-                    object.__setattr__(cfg, 'agent', replace(cfg.agent, custom_providers=new_cp))
-
-            providers = registry.providers_info(cfg)
-            agents = {}
-            for role, default_model in [("chunk", cfg.agent.chunk_model),
-                                         ("extract", cfg.agent.extract_model)]:
-                agents[role] = {
-                    "provider": cfg.agent.provider_for(role),
-                    "model": default_model,
-                    "providers": providers,
-                }
-            # 重构(recall)专用 provider 通道(S6 Phase 2):provider 如实返回 override 原值
-            # (空串 = 跟随全局,由前端显示「跟随全局」,不在此解析成有效 provider);
-            # providers 列表与 chunk/extract 同源同形状。
-            agents["recall"] = {
-                "model": cfg.agent.recall_model,
-                "provider": cfg.agent.recall_provider,
-                "providers": providers,
-            }
-
-            # embedding key 状态
-            emb = cfg.embedding
-            emb_key = _os2.environ.get(emb.api_key_env, "").strip()
-            embedding = {
-                "provider": emb.provider,
-                "model": emb.model,
-                "dim": emb.dim,
-                "key_env": emb.api_key_env,
-                "key_present": bool(emb_key),
-                "key_masked": registry.mask_key(emb.api_key_env),
-            }
-
-            # 各 provider 的 key 状态(内置无 key 项报 None;compat 家族共用;自定义各自一份)
-            agent_keys = registry.agent_key_status(cfg)
-
-            self._json({
-                "agents": agents,
-                "embedding": embedding,
-                "agent_keys": agent_keys,
-                "timeout_s": cfg.agent.timeout_s,
-                "max_retries": cfg.agent.max_retries,
-            })
+            self._json(provider_admin.get_agent_settings(cfg))
 
         def _api_agent_config_post(self, body) -> None:
-            """更新 agent 配置:写入 ~/.memory_system/.env,同步当前进程环境。
-            provider 切换影响所有 agent 角色(共享);model 可按 role 各自设。
-            变更需重启服务才能在后续 API 调用中全局生效(Config 启动时已冻结)。"""
+            """解析角色配置请求;持久化和热状态更新由 provider_admin 负责。"""
             role = str(body.get("role", "")).strip()
-            if role not in ("chunk", "extract", "recall"):
-                return self._json({"error": "role 必须是 chunk、extract 或 recall"}, 400)
-
-            updates: dict[str, str] = {}
-            # provider 切换(按 role 独立,不再共享)。recall 接受空串 = 清 override 跟随全局
-            # (S6 Phase 2);chunk/extract 沿用旧语义:空串视作「未改」。
-            provider = str(body.get("provider", "")).strip()
-            if role == "recall" and "provider" in body:
-                if provider == "" or provider in registry.all_provider_ids(cfg):
-                    updates["MEMORY_AGENT_RECALL_PROVIDER"] = provider
-            elif role != "recall" and provider and provider in registry.all_provider_ids(cfg):
-                prov_key = {"chunk": "MEMORY_AGENT_CHUNK_PROVIDER",
-                            "extract": "MEMORY_AGENT_EXTRACT_PROVIDER"}[role]
-                updates[prov_key] = provider
-
-            # model 切换(按 role)
-            model = str(body.get("model", "")).strip()
-            if model:
-                model_key = {"chunk": "MEMORY_AGENT_CHUNK_MODEL",
-                             "extract": "MEMORY_AGENT_EXTRACT_MODEL",
-                             "recall": "MEMORY_AGENT_RECALL_MODEL"}[role]
-                updates[model_key] = model
-
-            if not updates:
-                return self._json({"error": "缺少 provider 或 model"}, 400)
-
-            env_path = cfg.home / ".env"
-            with registry.CUSTOM_LOCK:
-                try:
-                    update_dotenv(env_path, updates)
-                except OSError as e:
-                    return self._json({"error": f"写入 .env 失败: {e}"}, 500)
-
-                # 更新内存中的 cfg(绕过 frozen),让 GET /api/agent/config 即时反映变更
-                new_agent = cfg.agent
-                if "MEMORY_AGENT_CHUNK_PROVIDER" in updates:
-                    new_agent = replace(new_agent, chunk_provider=updates["MEMORY_AGENT_CHUNK_PROVIDER"])
-                if "MEMORY_AGENT_EXTRACT_PROVIDER" in updates:
-                    new_agent = replace(new_agent, extract_provider=updates["MEMORY_AGENT_EXTRACT_PROVIDER"])
-                if "MEMORY_AGENT_RECALL_PROVIDER" in updates:
-                    new_agent = replace(new_agent, recall_provider=updates["MEMORY_AGENT_RECALL_PROVIDER"])
-                if "MEMORY_AGENT_CHUNK_MODEL" in updates:
-                    new_agent = replace(new_agent, chunk_model=updates["MEMORY_AGENT_CHUNK_MODEL"])
-                if "MEMORY_AGENT_EXTRACT_MODEL" in updates:
-                    new_agent = replace(new_agent, extract_model=updates["MEMORY_AGENT_EXTRACT_MODEL"])
-                if "MEMORY_AGENT_RECALL_MODEL" in updates:
-                    new_agent = replace(new_agent, recall_model=updates["MEMORY_AGENT_RECALL_MODEL"])
-                object.__setattr__(cfg, 'agent', new_agent)
-
-            self._json({"ok": True, "updated": updates,
-                        "restart_required": True,
-                        "hint": "provider/model 变更已写入 .env 并同步当前页面;已存在的 LLM 调用路径需重启服务才能全局生效"})
+            provider = str(body.get("provider", "")).strip() if "provider" in body else None
+            model = str(body.get("model", "")).strip() if "model" in body else None
+            try:
+                report = provider_admin.update_role_settings(
+                    cfg, role, provider=provider, model=model)
+            except provider_admin.ProviderAdminError as e:
+                return self._json({"error": str(e)}, _provider_error_status(e))
+            self._json({"ok": True, **report})
 
         # ---- 过程 prompt 正本(切块/提取/重构)----
         def _api_prompts(self) -> None:
@@ -459,7 +365,7 @@ def make_handler(cfg: Config):
                 ids = [u for u in t.uuids if u]
                 done = bool(ids) and all(u in pset for u in ids)
                 turns.append({"idx": t.idx, "human_text": t.human_text,
-                              "assistant_text": t.assistant_text, "uuids": ids,
+                              "assistant_text": t.assistant_text,
                               "msg_count": len(ids), "processed": done})
             self._json({
                 "session_id": ct.session_id, "path": str(path),
@@ -541,160 +447,36 @@ def make_handler(cfg: Config):
 
         # ---- 自定义 provider 管理 ----
         def _api_add_provider(self, body) -> None:
-            """添加一个自定义 OpenAI 兼容 provider。
-            自动生成 env var 名并写入占位 key 到 .env。"""
+            """解析新增请求;provider 业务规则和落盘由 provider_admin 负责。"""
             name = str(body.get("name", "")).strip()
             base_url = str(body.get("base_url", "")).strip()
             model = str(body.get("model", "")).strip()
-
-            if not name or not base_url:
-                return self._json({"error": "name 和 base_url 必填"}, 400)
-            if not base_url.startswith("https://") and not base_url.startswith("http://"):
-                return self._json({"error": "base_url 必须以 http:// 或 https:// 开头"}, 400)
-
-            # 校验:base_url 要是 API 端点(含 /v1 等版本路径),不是 Web 平台首页。
-            # OpenAI 兼容 API 的 chat 路径统一为 {base_url}/chat/completions。
-            import re as _re
-            _stripped = base_url.rstrip("/")
-            _has_api_ver = bool(_re.search(r"/v\d+", _stripped))
-            _hints: list[str] = []
-            if not _has_api_ver:
-                _hints.append(
-                    f"base_url 不含 /v1 等版本路径,实际请求将指向 "
-                    f"{_stripped}/chat/completions——多数 OpenAI 兼容 API 需要 /v1 前缀,"
-                    f"请确认这是正确的 API 端点而非 Web 控制台地址。"
-                    f"例如 DeepSeek 应为 https://api.deepseek.com/v1 而非 https://platform.deepseek.com"
-                )
-            # 常见平台域名的误用
-            _host = (_stripped.split("://", 1)[1] if "://" in _stripped else _stripped).split("/")[0]
-            if _host in ("platform.deepseek.com", "chat.deepseek.com", "platform.openai.com"):
-                _hints.append(
-                    f"{_host} 是 Web 平台而非 API 端点;DeepSeek API 为 api.deepseek.com/v1,"
-                    f"OpenAI API 为 api.openai.com/v1"
-                )
-            pid = "custom_" + _re.sub(r"[^a-z0-9_]", "_", name.lower().strip().replace(" ", "_"))
-            pid = _re.sub(r"_+", "_", pid).strip("_")
-            env_var = pid.upper() + "_API_KEY"
-
-            from datetime import datetime, timezone
-
-            placeholder = registry.PLACEHOLDER_KEY
-            with registry.CUSTOM_LOCK:
-                # 去重(锁内读改写,防并发添加互相覆盖)
-                existing = registry.load_custom(cfg.home)
-                if any(p["id"] == pid for p in existing):
-                    return self._json({"error": f"provider id {pid!r} 已存在"}, 409)
-
-                cp = {
-                    "id": pid,
-                    "name": name,
-                    "base_url": base_url.rstrip("/"),
-                    "api_key_env": env_var,
-                    "default_model": model or "",
-                    "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                }
-
-                # 写 .env:占位 key + 同步环境
-                update_dotenv(cfg.home / ".env", {env_var: placeholder})
-
-                # 保存到 custom_providers.json
-                existing.append(cp)
-                registry.save_custom(cfg.home, existing)
-
-                # 更新内存 cfg
-                new_cp_map = dict(cfg.agent.custom_providers)
-                new_cp_map[pid] = {"base_url": cp["base_url"], "api_key_env": env_var,
-                                   "default_model": cp["default_model"]}
-                object.__setattr__(cfg, 'agent', replace(cfg.agent, custom_providers=new_cp_map))
-
-            self._json({
-                "ok": True,
-                "provider": cp,
-                "hint": f"Key 占位已写入 .env 的 {env_var}={placeholder};请到 ~/.memory_system/.env 替换为真实 key 后再测试连接",
-                "warnings": _hints if _hints else None,
-            })
+            try:
+                report = provider_admin.add_custom_provider(cfg, name, base_url, model)
+            except provider_admin.ProviderAdminError as e:
+                return self._json({"error": str(e)}, _provider_error_status(e))
+            self._json({"ok": True, **report})
 
         def _api_update_provider(self, body) -> None:
-            """修改自定义 OpenAI 兼容 provider 的显示名、base_url、默认模型。
-
-            id/api_key_env 不改,避免 .env key 变量被隐式迁移。
-            """
+            """解析修改请求;provider 业务规则和落盘由 provider_admin 负责。"""
             pid = str(body.get("id", "")).strip()
-            if not pid:
-                return self._json({"error": "缺 id"}, 400)
-            if registry.is_builtin(pid):
-                return self._json({"error": f"内置 provider {pid!r} 不可修改"}, 403)
-
             name = str(body.get("name", "")).strip()
             base_url = str(body.get("base_url", "")).strip()
             model = str(body.get("model", "")).strip()
-            if not name or not base_url:
-                return self._json({"error": "name 和 base_url 必填"}, 400)
-            if not base_url.startswith("https://") and not base_url.startswith("http://"):
-                return self._json({"error": "base_url 必须以 http:// 或 https:// 开头"}, 400)
-
-            with registry.CUSTOM_LOCK:
-                existing = registry.load_custom(cfg.home)
-                idx = next((i for i, p in enumerate(existing) if p.get("id") == pid), None)
-                if idx is None:
-                    return self._json({"error": f"provider {pid!r} 不存在"}, 404)
-
-                cp = dict(existing[idx])
-                cp["name"] = name
-                cp["base_url"] = base_url.rstrip("/")
-                cp["default_model"] = model
-                existing[idx] = cp
-                registry.save_custom(cfg.home, existing)
-
-                new_cp_map = dict(cfg.agent.custom_providers)
-                new_cp_map[pid] = {"base_url": cp["base_url"], "api_key_env": cp["api_key_env"],
-                                   "default_model": cp.get("default_model", "")}
-                object.__setattr__(cfg, 'agent', replace(cfg.agent, custom_providers=new_cp_map))
-
-            self._json({"ok": True, "provider": cp})
+            try:
+                report = provider_admin.update_custom_provider(
+                    cfg, pid, name=name, base_url=base_url, model=model)
+            except provider_admin.ProviderAdminError as e:
+                return self._json({"error": str(e)}, _provider_error_status(e))
+            self._json({"ok": True, **report})
 
         def _api_remove_provider(self, pid: str) -> None:
-            """删除自定义 provider(内置 provider 不可删)。"""
-            if not pid:
-                return self._json({"error": "缺 id"}, 400)
-            if registry.is_builtin(pid):
-                return self._json({"error": f"内置 provider {pid!r} 不可删除"}, 403)
-
-            with registry.CUSTOM_LOCK:
-                existing = registry.load_custom(cfg.home)
-                cp = next((p for p in existing if p["id"] == pid), None)
-                if not cp:
-                    return self._json({"error": f"provider {pid!r} 不存在"}, 404)
-
-                # 不移除 .env 中的 key 变量(用户可能以后还要用);只删 JSON 条目
-                existing = [p for p in existing if p["id"] != pid]
-                registry.save_custom(cfg.home, existing)
-
-                # 更新内存 cfg
-                new_cp_map = dict(cfg.agent.custom_providers)
-                new_cp_map.pop(pid, None)
-                new_agent = replace(cfg.agent, custom_providers=new_cp_map)
-                env_updates: dict[str, str] = {}
-
-                # 如果当前 provider 正是被删的,回退到默认。role 专用 provider 用空值
-                # 表示回落到全局默认;否则会留下悬空 provider id。
-                if cfg.agent.provider == pid:
-                    env_updates["MEMORY_AGENT_PROVIDER"] = "claude_cli"
-                    new_agent = replace(new_agent, provider="claude_cli")
-                if cfg.agent.chunk_provider == pid:
-                    env_updates["MEMORY_AGENT_CHUNK_PROVIDER"] = ""
-                    new_agent = replace(new_agent, chunk_provider="")
-                if cfg.agent.extract_provider == pid:
-                    env_updates["MEMORY_AGENT_EXTRACT_PROVIDER"] = ""
-                    new_agent = replace(new_agent, extract_provider="")
-                if cfg.agent.recall_provider == pid:
-                    env_updates["MEMORY_AGENT_RECALL_PROVIDER"] = ""
-                    new_agent = replace(new_agent, recall_provider="")
-                if env_updates:
-                    update_dotenv(cfg.home / ".env", env_updates)
-                object.__setattr__(cfg, 'agent', new_agent)
-
-            self._json({"ok": True, "removed": pid})
+            """解析删除请求;override 清理由 provider_admin 负责。"""
+            try:
+                report = provider_admin.remove_custom_provider(cfg, pid)
+            except provider_admin.ProviderAdminError as e:
+                return self._json({"error": str(e)}, _provider_error_status(e))
+            self._json({"ok": True, **report})
 
         # ---- embedding 连接测试 ----
         def _api_embedding_test(self, body) -> None:
@@ -717,7 +499,8 @@ def make_handler(cfg: Config):
             pid = str(body.get("provider", "")).strip()
             if not pid or pid not in set(registry.all_provider_ids(cfg)):
                 return self._json({"ok": False, "detail": f"未知 provider: {pid!r}"}, 400)
-            ok, why = probe_provider(cfg.agent, pid, registry.custom_map(cfg.home))
+            ok, why = probe_provider(
+                provider_admin.current_agent(cfg), pid, registry.custom_map(cfg.home))
             self._json({"ok": ok, "detail": why})
 
         def _session_for_staging(self, body) -> str | None:
@@ -931,7 +714,8 @@ def make_handler(cfg: Config):
                                          else f"{query}(语境: {context})")
                     setup_logging(cfg.logs_dir)  # reconstruct 要写候选集日志(召回可重放)
                     try:
-                        reconstruction = reconstruct.run(cfg, mode, structured, user_query)
+                        reconstruction = reconstruct.run(
+                            provider_admin.runtime_config(cfg), mode, structured, user_query)
                     except ChatError as e:
                         err = f"重构失败(结构化结果照常展示): {e}"
             self._json({"structured": structured, "reconstruction": reconstruction,
@@ -983,7 +767,9 @@ def make_handler(cfg: Config):
                 return self._json({"error": "清洗后 0 回合,无可切内容"}, 400)
             mtime = path.stat().st_mtime
 
-            agent_cfg = _replace(cfg.agent, provider=cfg.agent.provider_for("chunk"))
+            active_agent = provider_admin.current_agent(cfg)
+            agent_cfg = _replace(
+                active_agent, provider=active_agent.provider_for("chunk"))
             if body.get("provider"):
                 agent_cfg = _replace(agent_cfg, provider=body["provider"])
             model = body.get("model") or agent_cfg.chunk_model
@@ -1036,7 +822,9 @@ def make_handler(cfg: Config):
                 if not segments:
                     return self._json({"error": f"无匹配 seg_id: {sorted(want)}"}, 400)
 
-            agent_cfg = _replace(cfg.agent, provider=cfg.agent.provider_for("extract"))
+            active_agent = provider_admin.current_agent(cfg)
+            agent_cfg = _replace(
+                active_agent, provider=active_agent.provider_for("extract"))
             if body.get("provider"):
                 agent_cfg = _replace(agent_cfg, provider=body["provider"])
             model = body.get("model") or agent_cfg.extract_model

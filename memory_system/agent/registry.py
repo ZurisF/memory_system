@@ -19,7 +19,7 @@ import threading
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-# 自定义 provider 目录 + 内存 cfg 热改的互斥(server 多线程下防「读旧表→各自改→后写覆盖」)。
+# 自定义 provider 目录 + 进程内 agent 热状态的互斥(server 多线程下防「读旧表→各自改→后写覆盖」)。
 # 可重入:handler 里套着调 load_custom/save_custom 不自锁死。
 CUSTOM_LOCK = threading.RLock()
 

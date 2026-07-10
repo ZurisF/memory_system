@@ -18,6 +18,7 @@ import json
 import threading
 from dataclasses import replace
 from http.server import ThreadingHTTPServer
+from pathlib import Path
 from types import SimpleNamespace
 from urllib import request
 from urllib.parse import urlencode
@@ -30,7 +31,7 @@ os.environ["MEMORY_AGENT_EXTRACT_PROVIDER"] = "fake"
 os.environ["DEEPSEEK_API_KEY"] = "sk-test"
 os.environ["CUSTOM_TMP_API_KEY"] = "[this is your api key]"
 
-from memory_system.agent import get_chat_provider  # noqa: E402
+from memory_system.agent import get_chat_provider, provider_admin  # noqa: E402
 from memory_system.cli import cmd_index  # noqa: E402
 from memory_system.config import load_config  # noqa: E402
 from memory_system.db import migrate  # noqa: E402
@@ -114,6 +115,56 @@ assert extract_cfg.provider == "fake", extract_cfg
 assert get_chat_provider(extract_cfg).id == "fake"
 ok("按角色 provider_for() 可分别驱动 chunk/extract 默认")
 
+# provider_admin 直接接口门:写入顺序与旧 handler 一致,且热更新不改 frozen Config。
+order_home = Path(tempfile.mkdtemp(prefix="memsys_provider_order_"))
+order_cfg = replace(
+    CFG,
+    home=order_home,
+    agent=replace(CFG.agent, chunk_provider="", extract_provider="",
+                  recall_provider="", custom_providers={}),
+)
+for d in order_cfg.all_dirs():
+    d.mkdir(parents=True, exist_ok=True)
+provider_admin.initialize_runtime(order_cfg)
+events: list[str] = []
+original_update_dotenv = provider_admin.update_dotenv
+original_save_custom = provider_admin.registry.save_custom
+
+
+def _record_update_dotenv(path, updates):
+    events.append("env")
+    return original_update_dotenv(path, updates)
+
+
+def _record_save_custom(home, providers):
+    events.append("catalog")
+    return original_save_custom(home, providers)
+
+
+provider_admin.update_dotenv = _record_update_dotenv
+provider_admin.registry.save_custom = _record_save_custom
+try:
+    added = provider_admin.add_custom_provider(
+        order_cfg, "Order Probe", "https://api.order.example/v1", "probe-model")
+    probe_id = added["provider"]["id"]
+    assert events == ["env", "catalog"], events
+    assert probe_id in provider_admin.current_agent(order_cfg).custom_providers
+
+    events.clear()
+    provider_admin.update_role_settings(
+        order_cfg, "chunk", provider=probe_id, model=None)
+    assert order_cfg.agent.chunk_provider == "", "Config 启动快照不得被热更新修改"
+    assert provider_admin.current_agent(order_cfg).chunk_provider == probe_id
+
+    events.clear()
+    provider_admin.remove_custom_provider(order_cfg, probe_id)
+    assert events == ["catalog", "env"], events
+    assert provider_admin.current_agent(order_cfg).chunk_provider == ""
+finally:
+    provider_admin.update_dotenv = original_update_dotenv
+    provider_admin.registry.save_custom = original_save_custom
+ok("provider_admin:新增先写 .env 再写目录;删除先写目录再清 override;Config 快照不变")
+
 blocked = cmd_index(replace(CFG, embedding=replace(CFG.embedding, provider="dashscope")),
                     SimpleNamespace(action="rebuild", provider="fake"))
 assert blocked == 1, blocked
@@ -145,6 +196,8 @@ try:
     cfg_after_delete = _get(base, "/api/agent/config")
     assert cfg_after_delete["agents"]["chunk"]["provider"] == "deepseek", cfg_after_delete
     assert all(p["id"] != "custom_tmp" for p in cfg_after_delete["agents"]["chunk"]["providers"])
+    assert CFG.agent.chunk_provider == "custom_tmp", "HTTP 热更新不得修改 Config 启动快照"
+    assert provider_admin.current_agent(CFG).chunk_provider == ""
     ok("HTTP:删除自定义 provider 后清理 role override")
 
     # ---- recall_model 门:GET 含 recall_model / POST 改写 .env 后 GET 读回新值 ----
@@ -179,6 +232,8 @@ try:
     assert "MEMORY_AGENT_RECALL_PROVIDER=fake" in env_lines, env_lines
     cfg_rp = _get(base, "/api/agent/config")
     assert cfg_rp["agents"]["recall"]["provider"] == "fake", cfg_rp
+    assert CFG.agent.recall_provider == "", "Config 启动快照不得被热更新修改"
+    assert provider_admin.current_agent(CFG).recall_provider == "fake"
     # 全局 agent provider 不受影响(chunk 无 override 时回落全局 deepseek)
     assert cfg_rp["agents"]["chunk"]["provider"] == "deepseek", cfg_rp
     assert not any(l.startswith("MEMORY_AGENT_PROVIDER=") for l in env_lines), env_lines

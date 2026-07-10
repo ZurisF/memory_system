@@ -112,6 +112,21 @@ def main() -> None:
     thread.start()
     base = f"http://127.0.0.1:{httpd.server_address[1]}"
     try:
+        transcript = _get(base, "/api/transcript?path=" + quote(str(src)))
+        expected_turn_keys = {
+            "idx", "human_text", "assistant_text", "msg_count", "processed"}
+        assert transcript["turns"] and all(
+            set(turn) == expected_turn_keys for turn in transcript["turns"]), transcript
+        assert all("uuids" not in turn for turn in transcript["turns"]), transcript
+        ok("GET /api/transcript:回合载荷不含 uuids,其余字段契约不变")
+
+        selected = _post(base, "/api/select", {"path": str(src), "turn_idxs": [1]})
+        assert selected.get("ok") and selected["turns"] == [1], selected
+        transcript_after = _get(base, "/api/transcript?path=" + quote(str(src)))
+        assert transcript_after["turns"][0]["processed"] is True, transcript_after
+        assert transcript_after["turns"][1]["processed"] is False, transcript_after
+        ok("POST /api/select:只传 turn_idxs 仍可在服务端映射 uuid 并回显 processed")
+
         segs = [
             {"start_turn": 1, "end_turn": 2, "tag": "前半", "cut_reason": "测试", "short": True,
              "deletions": [], "origin": "manual"},
